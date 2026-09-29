@@ -13,7 +13,8 @@ Backgammon in the browser with a built-in coach, all in a single HTML file.
 - Five board themes: classic walnut, navy leather, club green, marble & gold, and midnight.
 
 ## Run it
-Open `backgammon.html` in a browser.
+Play online at https://backgammonmaster123.github.io/wildwood-backgammon/ (deployed from `main`
+by GitHub Pages), or open `backgammon.html` in a browser.
 
 ## Develop
 ```bash

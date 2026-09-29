@@ -12,6 +12,8 @@ free to run. An LLM "explain this move" layer may be added later.
 | `backgammon.html` | **The app.** Markup, CSS and one `<script>` holding the engine plus UI. It is an HTML *fragment* (no `<!doctype>`/`<head>`); the artifact host adds the page skeleton. |
 | `engine.js` | **Source of truth for the rules and analysis engine.** Exported for Node tests. |
 | `build-page.js` | Copies `engine.js` into `backgammon.html` between the markers `/* ===== engine (verified rules core) ===== */` and `/* ===== UI ===== */`. |
+| `build-site.js` | `npm run build:site`: wraps the fragment into `_site/index.html` (git-ignored) for GitHub Pages. |
+| `.github/workflows/` | `test.yml` (CI) and `pages.yml` (deploys to GitHub Pages on push to `main`). |
 | `tests/` | jsdom and Playwright suites, plus `run-all.js`. Fixtures are in `tests/fixtures/`. |
 | `tools/` | One-off scripts: calibration against wildbg, MLP training, cube-position finder, theme screenshots. They write scratch files to `/tmp`. |
 | `wildbg-kit/` | Adapter and guide for swapping the heuristic engine for the wildbg neural net (WASM). |
@@ -106,6 +108,9 @@ free to run. An LLM "explain this move" layer may be added later.
 
 ## Publishing
 - The owner plays the version published as a Claude artifact.
-- If GitHub Pages is set up, it serves a full HTML document built by wrapping the fragment in
-  `<!doctype html><meta charset=utf-8><meta name=viewport …>`. Never commit a separate,
-  diverging copy of the app.
+- GitHub Pages: `.github/workflows/pages.yml` runs on every push to `main` (and by hand via
+  workflow_dispatch). It checks the page is in sync with `engine.js`, runs `npm run test:fast`,
+  then runs `build-site.js`, which wraps the fragment in `<!doctype html><meta charset=utf-8><meta name=viewport …>`
+  plus the same base styles the test harnesses use, and deploys `_site/`. The repo's
+  Settings → Pages → Source must be set to "GitHub Actions". Never commit a separate,
+  diverging copy of the app; `_site/` is build output only.
