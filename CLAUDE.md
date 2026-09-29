@@ -30,6 +30,15 @@ free to run. An LLM "explain this move" layer may be added later.
    stylesheet, and the page must still work if that fails. No CDNs, no fetch calls, no WASM
    in the published page. wildbg is for a self-hosted build only; see `wildbg-kit/`.
 5. Must work at phone width (about 400px), in light and dark mode, and with reduced motion.
+6. **Never put an API key or other secret in the repo or in the published page.** That covers
+   the planned LLM "explain this move" layer too. Keys go in GitHub's secret settings
+   (Settings → Secrets and variables → Actions) and are read only by workflows or a server.
+   A GitHub secret is **not** safe to inject into `backgammon.html` or `_site/` at build time:
+   Pages serves a public static page, so anything in it can be read by every visitor. An LLM
+   feature must call the model through something that keeps the key on the server side (a
+   small proxy, or the Claude artifact runtime), or have each player enter their own key at
+   runtime (kept in localStorage, never committed). CI fails if an Anthropic key pattern
+   (`sk-ant-…`) appears in tracked files or the built site.
 
 ## Architecture
 
