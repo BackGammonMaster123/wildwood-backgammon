@@ -158,6 +158,14 @@
   .choice:hover { border-color: var(--accent); transform: translateY(-2px); }
   .choice .k { font-family: "Fraunces", serif; font-size: 20px; font-weight: 600; }
   .choice .d { color: var(--ink-soft); font-size: 13.5px; line-height: 1.5; }
+  .synccard { width: 100%; max-width: 520px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .synccard .sc-head { font-weight: 600; margin-bottom: 4px; }
+  .synccard .sc-line { font-size: 13.5px; color: var(--ink-soft); margin: 0 0 10px; line-height: 1.5; }
+  .synccard .sc-line b { color: var(--ink); }
+  .synccard .sc-form { display: flex; gap: 8px; flex-wrap: wrap; }
+  .synccard input { flex: 1 1 180px; min-width: 0; font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); }
+  .synccard .sc-note { font-size: 12.5px; color: var(--ink-soft); margin: 8px 0 0; }
+  .synccard .sc-err { font-size: 12.5px; color: var(--bad); margin: 8px 0 0; }
   .lessonlist { display: flex; flex-direction: column; gap: 10px; }
   .lessonrow { text-align: left; background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; cursor: pointer; font: inherit; }
   .lessonrow:hover { border-color: var(--accent); }
@@ -503,6 +511,7 @@
       <span class="hint">for Play the bot</span>
     </div>
     <div class="boardpick" id="boardPick" role="group" aria-label="Board style"><div class="bp-label">Board style</div></div>
+    <div class="synccard" id="syncCard" hidden><div class="sc-head">Sync across devices</div><div id="syncBody"></div></div>
   </section>
 
   <!-- PROGRESS -->
@@ -1559,7 +1568,7 @@ const MKEY='wwbg-mistakes-v1';
 let storageOK=true;
 function checkStorage(){ try{ const k='wwbg-test'; localStorage.setItem(k,'1'); localStorage.removeItem(k); return true; }catch(e){ return false; } }
 function loadMistakes(){try{return JSON.parse(localStorage.getItem(MKEY)||'[]');}catch(e){return[];}}
-function saveMistakes(a){try{localStorage.setItem(MKEY,JSON.stringify(a.slice(-60)));}catch(e){storageOK=false;reflectStorage();}}
+function saveMistakes(a){try{localStorage.setItem(MKEY,JSON.stringify(a.slice(-60)));}catch(e){storageOK=false;reflectStorage();} cloudDirty();}
 let mistakes=loadMistakes();
 function updateMenuCounts(){const n=mistakes.length, due=typeof quizPool==='function'?quizPool().due.length:0;
   $('learnTag').textContent=n?`${n} position${n>1?'s':''} logged${due?` · ${due} due for review`:''}`:'no mistakes logged yet';
@@ -2048,13 +2057,13 @@ function selectMistake(idx){
 /* ---- history (progress tracking) ---- */
 const HKEY='wwbg-history-v1';
 function loadHist(){ try{ const h=JSON.parse(localStorage.getItem(HKEY)||'null'); if(h&&Array.isArray(h.games)&&Array.isArray(h.quiz)) return h; }catch(e){} return {games:[],quiz:[]}; }
-function saveHist(){ try{ localStorage.setItem(HKEY,JSON.stringify({games:hist.games.slice(-300),quiz:hist.quiz.slice(-3000)})); }catch(e){} }
+function saveHist(){ try{ localStorage.setItem(HKEY,JSON.stringify({games:hist.games.slice(-300),quiz:hist.quiz.slice(-3000)})); }catch(e){} cloudDirty(); }
 let hist=loadHist();
 /* ---- game records (for post-game review) ---- */
 const GKEY='wwbg-games-v1';
 function loadGames(){ try{ const g=JSON.parse(localStorage.getItem(GKEY)||'[]'); return Array.isArray(g)?g:[]; }catch(e){ return []; } }
 let gameRecs=loadGames();
-function saveGames(){ let k=gameRecs.length; while(k>0){ try{ localStorage.setItem(GKEY,JSON.stringify(gameRecs.slice(-k))); gameRecs=gameRecs.slice(-k); return; }catch(e){ k=Math.floor(k/2); } } }
+function saveGames(){ cloudDirty(); let k=gameRecs.length; while(k>0){ try{ localStorage.setItem(GKEY,JSON.stringify(gameRecs.slice(-k))); gameRecs=gameRecs.slice(-k); return; }catch(e){ k=Math.floor(k/2); } } }
 function recPush(t){ if(state.rec&&state.screen==='match') state.rec.turns.push(t); }
 function recMove(p,board,dice,steps,cubeAvail){ recPush({t:'move',p,board:cloneBoard(board),dice:dice.slice(),steps:steps.map(x=>({...x})),cube:{...state.cube},ctx:matchCtx(p),cubeAvail:!!cubeAvail}); }
 function startRec(){ const M=state.match; state.rollCubeAvail=false;
@@ -2069,13 +2078,14 @@ function finishRec(res,pts){ const r=state.rec; state.rec=null; if(!r||!r.turns.
 // FIBS starts everyone at 1500; here you start at the first level you play, so it means something at once.
 const RKEY='wwbg-rating-v1';
 let rating=(()=>{ try{ const r=JSON.parse(localStorage.getItem(RKEY)||'null'); if(r&&typeof r.exp==='number'&&Array.isArray(r.log)) return r; }catch(e){} return {r:null,exp:0,log:[]}; })();
-function saveRating(){ try{ rating.log=rating.log.slice(-200); localStorage.setItem(RKEY,JSON.stringify(rating)); }catch(e){} }
+function saveRating(){ try{ rating.log=rating.log.slice(-200); localStorage.setItem(RKEY,JSON.stringify(rating)); }catch(e){} cloudDirty(); }
 const fibsWin=(ra,rb,n)=>1/(1+Math.pow(10,-(ra-rb)*Math.sqrt(n)/2000));
 function rateResult(level,n,won){ const L=BOT_LEVELS[level]; if(!L) return null;
   if(rating.r==null) rating.r=L.rating;
   const K=Math.max(1,5-rating.exp/100), p=fibsWin(rating.r,L.rating,n);
   const d=won?4*K*Math.sqrt(n)*(1-p):-4*K*Math.sqrt(n)*p;
-  rating.r+=d; rating.exp+=n; rating.log.push({ts:Date.now(),r:Math.round(rating.r*10)/10,d:Math.round(d*10)/10,level,n,won}); saveRating(); return d; }
+  // d is kept unrounded: sync adds other devices' changes, and rounding would make devices drift apart
+  rating.r+=d; rating.exp+=n; rating.log.push({ts:Date.now(),r:Math.round(rating.r*10)/10,d,level,n,won}); saveRating(); return d; }
 function recordQuiz(right,kind){ hist.quiz.push({ts:Date.now(),right,kind}); saveHist(); }
 const blankGs=()=>({n:0,loss:0,cN:0,cLoss:0,cont:{n:0,loss:0},race:{n:0,loss:0}});
 function addCube(pl,err){ if(!state.gs||!isHuman(pl)) return; const g=state.gs[pl]; g.cN++; g.cLoss+=Math.max(0,err); }
@@ -2212,7 +2222,7 @@ function stopQuiz(silent){ const q=state.quiz; q.active=false; q.answered=false;
 const LESSON_POS=/* LESSON_POS:begin */{"opening":[{"b":{"p":[-2,0,0,0,0,5,0,3,0,0,0,-5,5,0,0,0,-3,0,-5,0,0,0,0,2],"bar":[0,0],"off":[0,0]},"d":[3,1],"a":"0,-2,0,0,0,2,4,0,2,0,0,0,-5,5,0,0,0,-3,0,-5,0,0,0,0,2|0,0|0,0"},{"b":{"p":[-2,0,0,0,0,5,0,3,0,0,0,-5,5,0,0,0,-3,0,-5,0,0,0,0,2],"bar":[0,0],"off":[0,0]},"d":[4,2],"a":"0,-2,0,0,2,0,4,0,2,0,0,0,-5,5,0,0,0,-3,0,-5,0,0,0,0,2|0,0|0,0"},{"b":{"p":[-2,0,0,0,0,5,0,3,0,0,0,-5,5,0,0,0,-3,0,-5,0,0,0,0,2],"bar":[0,0],"off":[0,0]},"d":[6,1],"a":"0,-2,0,0,0,0,5,2,2,0,0,0,-5,4,0,0,0,-3,0,-5,0,0,0,0,2|0,0|0,0"},{"b":{"p":[-2,0,0,0,0,5,0,3,0,0,0,-5,5,0,0,0,-3,0,-5,0,0,0,0,2],"bar":[0,0],"off":[0,0]},"d":[5,3],"a":"0,-2,0,2,0,0,4,0,2,0,0,0,-5,5,0,0,0,-3,0,-5,0,0,0,0,2|0,0|0,0"},{"b":{"p":[-2,0,0,0,0,5,0,3,0,0,0,-5,5,0,0,0,-3,0,-5,0,0,0,0,2],"bar":[0,0],"off":[0,0]},"d":[6,5],"a":"0,-2,0,0,0,0,5,0,3,0,0,0,-5,6,0,0,0,-3,0,-5,0,0,0,0,1|0,0|0,0"},{"b":{"p":[-2,0,0,0,0,5,0,3,0,0,0,-5,5,0,0,0,-3,0,-5,0,0,0,0,2],"bar":[0,0],"off":[0,0]},"d":[4,1],"a":"0,-2,0,0,0,0,5,0,3,1,0,0,-5,4,0,0,0,-3,0,-5,0,0,0,1,1|0,0|0,0"}],"primes":[{"b":{"p":[1,1,2,4,0,-2,0,0,0,0,-2,2,0,0,0,-1,0,-2,-2,3,-2,-2,-2,2],"bar":[0,0],"off":[0,0]},"d":[2,3],"a":"0,2,2,2,2,0,-2,0,0,0,0,-2,2,0,0,0,-1,0,-2,-2,3,-2,-2,-2,2|0,0|0,0"},{"b":{"p":[2,2,3,2,0,2,1,0,0,1,0,0,0,0,0,0,0,-2,-2,1,-4,-2,-3,1],"bar":[0,2],"off":[0,0]},"d":[5,2],"a":"0,2,2,3,2,2,2,0,0,0,0,0,0,0,0,0,0,0,-2,-2,1,-4,-2,-3,1|0,2|0,0"},{"b":{"p":[0,2,3,3,1,2,-1,0,0,0,0,0,0,0,1,1,0,0,-2,-5,-5,0,-2,2],"bar":[0,0],"off":[0,0]},"d":[5,5],"a":"0,0,2,3,3,2,3,-1,0,0,0,0,0,0,0,0,0,0,0,-2,-5,-5,0,-2,2|0,0|0,0"},{"b":{"p":[1,2,3,3,2,1,0,0,0,0,0,-1,0,0,0,0,0,0,-1,-3,-5,-2,-3,2],"bar":[1,0],"off":[0,0]},"d":[6,3],"a":"0,2,2,3,2,2,1,0,0,0,0,0,-1,0,0,0,0,0,0,1,-3,-5,-2,-3,2|0,1|0,0"},{"b":{"p":[3,0,-1,0,0,3,2,3,1,0,1,-2,0,0,0,0,-2,-2,-5,0,0,0,-2,2],"bar":[0,1],"off":[0,0]},"d":[2,4],"a":"0,3,0,-1,0,0,3,2,3,2,0,0,-2,0,0,0,0,-2,-2,-5,1,0,0,-2,1|0,1|0,0"}],"bearoff":[{"b":{"p":[2,2,2,2,5,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,-3,-5,-2,-3,0],"bar":[0,1],"off":[2,0]},"d":[6,1],"a":"0,2,2,2,3,3,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,-3,-5,-2,-3,0|0,1|3,0"},{"b":{"p":[6,2,2,2,3,0,0,0,0,0,0,0,0,0,0,0,0,0,-2,-4,-2,-2,-3,-1],"bar":[0,1],"off":[0,0]},"d":[2,4],"a":"0,6,3,2,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,-2,-4,-2,-2,-3,-1|0,1|1,0"},{"b":{"p":[-2,4,4,0,3,0,-1,0,0,0,-1,-2,0,-1,0,0,0,-1,-3,-3,0,0,-1,0],"bar":[0,0],"off":[4,0]},"d":[1,2],"a":"0,-2,4,3,0,3,0,-1,0,0,0,-1,-2,0,-1,0,0,0,-1,-3,-3,0,0,-1,0|0,0|5,0"},{"b":{"p":[2,-1,2,5,2,1,0,0,-1,0,0,0,0,-1,0,0,0,0,-1,-2,-3,-2,-2,-2],"bar":[0,0],"off":[3,0]},"d":[1,1],"a":"0,2,2,0,6,2,0,0,0,-1,0,0,0,0,-1,0,0,0,0,-1,-2,-3,-2,-2,-2|0,1|3,0"},{"b":{"p":[1,-1,3,5,2,0,0,0,-1,0,0,0,0,0,0,0,0,0,-2,-2,-3,-2,-2,-2],"bar":[0,0],"off":[4,0]},"d":[6,2],"a":"0,1,-1,4,5,0,0,0,0,-1,0,0,0,0,0,0,0,0,0,-2,-2,-3,-2,-2,-2|0,0|5,0"}],"doubling":[{"b":{"p":[-3,-1,3,0,0,5,0,2,0,0,0,-4,3,0,0,0,-2,-1,-4,0,1,0,0,0],"bar":[1,0],"off":[0,0]},"a":"double"},{"b":{"p":[0,4,4,3,-2,2,0,0,0,0,2,-2,0,0,0,0,0,-1,-2,-2,-4,0,0,-2],"bar":[0,0],"off":[0,0]},"a":"double"},{"b":{"p":[1,4,2,2,0,2,0,0,-6,2,0,0,2,0,0,0,0,0,-2,0,-2,-1,-2,-2],"bar":[0,0],"off":[0,0]},"a":"double"},{"b":{"p":[0,0,-1,0,-2,5,2,2,0,-1,0,-4,4,0,0,0,-2,0,-5,0,1,0,0,1],"bar":[0,0],"off":[0,0]},"a":"nodouble"},{"b":{"p":[-3,-1,2,2,0,3,2,2,0,0,0,-2,2,-1,0,0,0,-1,-2,1,-3,1,-2,0],"bar":[0,0],"off":[0,0]},"a":"nodouble"}],"taking":[{"b":{"p":[0,0,0,-1,0,4,1,2,0,0,0,-3,4,0,0,0,-2,0,-5,0,0,-3,1,3],"bar":[0,1],"off":[0,0]},"a":"take"},{"b":{"p":[0,0,0,0,1,5,-2,3,1,0,0,-5,3,0,0,0,-1,0,-5,0,0,0,-2,1],"bar":[1,0],"off":[0,0]},"a":"take"},{"b":{"p":[0,2,3,3,1,2,0,0,0,0,0,0,0,0,1,1,0,0,-2,-5,-5,0,-2,2],"bar":[0,1],"off":[0,0]},"a":"take"},{"b":{"p":[2,2,1,2,0,2,0,0,0,0,0,-2,0,0,-2,2,0,0,-3,4,-2,-3,-3,0],"bar":[0,0],"off":[0,0]},"a":"pass"},{"b":{"p":[2,2,1,2,0,2,0,0,0,0,0,-2,0,0,-2,6,0,0,-2,0,-2,-2,-4,-1],"bar":[0,0],"off":[0,0]},"a":"pass"}]}/* LESSON_POS:end */;
 const LKEY='wwbg-lessons-v1';
 let lessonProg=(()=>{ try{ const v=JSON.parse(localStorage.getItem(LKEY)||'{}'); return v&&typeof v==='object'?v:{}; }catch(e){ return {}; } })();
-function saveLessons(){ try{ localStorage.setItem(LKEY,JSON.stringify(lessonProg)); }catch(e){} }
+function saveLessons(){ try{ localStorage.setItem(LKEY,JSON.stringify(lessonProg)); }catch(e){} cloudDirty(); }
 const lessonBoard=c=>({points:[0,...c.p],bar:{w:c.bar[0],b:c.bar[1]},off:{w:c.off[0],b:c.off[1]}});
 const shotsOn=b=>shotRolls(b,'w');
 const OPEN_TIPS={'3-1':'8/5 6/5 makes your 5-point, the most valuable point early on: it blocks the back checkers and gives your own checkers a safe landing spot.',
@@ -2295,6 +2305,134 @@ function lessonNext(){ const S=state.lesson; if(!S) return;
   const id=S.L.id; state.lesson=null;
   $('lessonAgain').addEventListener('click',()=>startLesson(id)); if(nextL) $('lessonNextL').addEventListener('click',()=>openLesson(nextL.id));
   $('lessonBack').addEventListener('click',renderLessonList); render(); }
+
+/* ---- cloud sync: Firebase Auth (email link) + Realtime Database, over REST, no SDK ---- */
+// Only on the published site: the Claude artifact can't reach the network. The web config
+// below is public by design; access is enforced by firebase/database.rules.json (each user
+// can read and write only /users/<their uid>). Local storage stays the source the game runs
+// from; a sync does a three-way merge (this device, the cloud, the last synced state) so
+// additions, edits and deletions all carry across, then writes back only what changed.
+const FIREBASE={apiKey:'AIzaSyC2Ziw4Jtdm-isG8Qfw_QeTE_uWwJIptc0',databaseURL:'https://wildwood-backgammon-default-rtdb.europe-west1.firebasedatabase.app'};
+const CLOUD_HOSTS=['backgammonmaster123.github.io','localhost','127.0.0.1'];
+const CKEY='wwbg-cloud-v1', CBASE='wwbg-sync-base-v1', CEMAIL='wwbg-cloud-email';
+const COLS=['m','g','hg','hq','l','rl'];   // mistakes, game records, history games/quiz, lessons, rating log
+var CLOUD=null;   // var, not let: save functions call cloudDirty() before this section has run
+const lsGet=k=>{ try{ return JSON.parse(localStorage.getItem(k)||'null'); }catch(e){ return null; } };
+const lsSet=(k,v)=>{ try{ if(v==null) localStorage.removeItem(k); else localStorage.setItem(k,JSON.stringify(v)); }catch(e){} };
+// fetch rejects with a TypeError when the network is unreachable
+const cloudErr=e=>e&&e.name==='TypeError'?'Couldn\u2019t reach the cloud. Check your connection; your games are safe on this device.':(e&&e.message||String(e));
+function cloudAvailable(){ return typeof fetch==='function'&&(!!window.WWBG_CLOUD_TEST||CLOUD_HOSTS.includes(location.hostname)); }
+function authMsg(j){ const m=(j&&j.error&&j.error.message||'').split(/[ :]/)[0];
+  return ({INVALID_OOB_CODE:'That sign-in link has expired or was already used. Send a new one.',EXPIRED_OOB_CODE:'That sign-in link has expired. Send a new one.',
+    INVALID_EMAIL:'That email address doesn’t look right.',QUOTA_EXCEEDED:'Too many sign-in emails were sent today. Try again tomorrow.',
+    TOKEN_EXPIRED:'Your sign-in has expired. Sign in again.',USER_NOT_FOUND:'Your sign-in has expired. Sign in again.'})[m]||'Could not reach the sign-in service. Check your connection.'; }
+async function idt(path,body){ const r=await fetch(`https://identitytoolkit.googleapis.com/v1/${path}?key=${FIREBASE.apiKey}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(authMsg(j)); return j; }
+function setSession(j){ const old=CLOUD.session||{};
+  CLOUD.session={uid:j.localId||j.user_id||old.uid,email:j.email||old.email,refresh:j.refreshToken||j.refresh_token||old.refresh,token:j.idToken||j.id_token,exp:Date.now()+(+(j.expiresIn||j.expires_in)||3600)*1000};
+  lsSet(CKEY,CLOUD.session); }
+async function cloudToken(){ const s=CLOUD.session; if(s.token&&s.exp-60e3>Date.now()) return s.token;
+  const r=await fetch(`https://securetoken.googleapis.com/v1/token?key=${FIREBASE.apiKey}`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'grant_type=refresh_token&refresh_token='+encodeURIComponent(s.refresh)});
+  const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(authMsg(j)); setSession(j); return CLOUD.session.token; }
+async function db(method,path,body){ const t=await cloudToken();
+  const r=await fetch(`${FIREBASE.databaseURL}/${path}.json?auth=${encodeURIComponent(t)}`,{method,headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
+  if(!r.ok) throw new Error(r.status===401||r.status===403?'The database refused access. Its rules may not be set up yet.':`Sync failed (error ${r.status}).`); return r.json(); }
+
+// Everything that syncs, as collection -> key -> record. Keys avoid the characters Firebase forbids.
+const hk=s=>String(s).replace(/[.#$\/\[\]]/g,'_');
+function cloudCollections(){ const by=(a,f)=>{ const o={}; for(const x of a) o[hk(f(x))]=x; return o; };
+  return { m:by(mistakes,x=>x.id), g:by(gameRecs,x=>x.id), hg:by(hist.games,x=>x.ts+'-'+x.player+'-'+x.name), hq:by(hist.quiz,x=>x.ts+'-'+x.kind),
+    l:{...lessonProg}, rl:by(rating.log,x=>x.ts+'-'+x.level) }; }
+function strHash(s){ if(s==null) return null; let h=2166136261; for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619); } return (h>>>0).toString(36)+'.'+s.length; }
+const recTime=x=>Math.max(x&&x.sr&&x.sr.last||0,x&&x.ts||0);
+// Three-way merge of one collection. L, R: key -> JSON text (this device, the cloud); B: key -> hash
+// at the last sync. A side that still matches B hasn't changed, so the other side wins; if both
+// changed, the more recently touched record wins (an edit beats a deletion).
+function merge3(L,R,B){ const out={}, fromR=[];
+  for(const k of new Set([...Object.keys(L),...Object.keys(R),...Object.keys(B)])){
+    const l=L[k], r=R[k], lh=strHash(l), rh=strHash(r), bh=B[k]||null; let v;
+    if(lh===rh) v=l;
+    else if(lh===bh){ v=r; if(l==null&&r!=null) fromR.push(k); }
+    else if(rh===bh) v=l;
+    else if(l==null){ v=r; fromR.push(k); }
+    else if(r==null) v=l;
+    else v=recTime(JSON.parse(r))>recTime(JSON.parse(l))?r:l;
+    if(v!=null) out[k]=v; }
+  return {out,fromR}; }
+function cloudApply(M,remoteRs){ const vals=o=>Object.values(o).map(s=>JSON.parse(s)), t=(a,b)=>(a.ts||0)-(b.ts||0);
+  CLOUD.applying=true;
+  try{
+    mistakes=vals(M.m.out).sort(t).slice(-60); saveMistakes(mistakes);
+    gameRecs=vals(M.g.out).sort(t).slice(-20); saveGames();
+    hist.games=vals(M.hg.out).sort(t); hist.quiz=vals(M.hq.out).sort(t); saveHist();
+    lessonProg={}; for(const k in M.l.out) lessonProg[k]=JSON.parse(M.l.out[k]); saveLessons();
+    // rating: add the changes from games rated on other devices since the last sync
+    const added=M.rl.fromR.map(k=>JSON.parse(M.rl.out[k]));
+    if(rating.r==null&&remoteRs) { rating.r=remoteRs.r; rating.exp=remoteRs.exp; }
+    else if(rating.r!=null) for(const e of added){ rating.r+=e.d; rating.exp+=e.n; }
+    rating.log=vals(M.rl.out).sort(t); saveRating();
+  } finally { CLOUD.applying=false; } }
+async function cloudSync(){
+  if(!CLOUD||!CLOUD.session) return;
+  if(CLOUD.busy){ CLOUD.again=true; return; }
+  CLOUD.busy=true; CLOUD.err=null; renderSync('Syncing…');
+  try{
+    const uid=CLOUD.session.uid, remote=(await db('GET','users/'+uid))||{};
+    let base=lsGet(CBASE); if(!base||base.uid!==uid) base={uid};
+    // from here to the local apply there is no await, so nothing the player does can slip between
+    const local=cloudCollections(), M={};
+    for(const c of COLS){ const L={}; for(const k in local[c]) L[k]=JSON.stringify(local[c][k]); M[c]=merge3(L,remote[c]||{},base[c]||{}); }
+    let remoteRs=null; try{ remoteRs=remote.rs?JSON.parse(remote.rs):null; }catch(e){}
+    cloudApply(M,remoteRs);
+    const fin=cloudCollections(), patch={}, nb={uid};
+    for(const c of COLS){ const R=remote[c]||{}, F={}; nb[c]={};
+      for(const k in fin[c]){ F[k]=JSON.stringify(fin[c][k]); nb[c][k]=strHash(F[k]); }
+      for(const k of new Set([...Object.keys(R),...Object.keys(F)])) if(R[k]!==F[k]) patch[c+'/'+k]=F[k]===undefined?null:F[k]; }
+    const rs=rating.r==null?null:JSON.stringify({r:rating.r,exp:rating.exp}); if((remote.rs||null)!==rs) patch.rs=rs;
+    if(Object.keys(patch).length) await db('PATCH','users/'+uid,patch);
+    lsSet(CBASE,nb); CLOUD.last=Date.now();
+    updateMenuCounts(); updateLessonsTag();
+    if(state.screen==='progress') renderProgress(); else if(state.screen==='learn'&&!state.quiz.active&&!state.lesson) renderMistakeList();
+  }catch(e){ CLOUD.err=cloudErr(e); }
+  finally{ CLOUD.busy=false; renderSync(); if(CLOUD.again){ CLOUD.again=false; cloudDirty(); } } }
+// Called by every save of synced data; syncs a few seconds after the last change.
+function cloudDirty(){ if(!CLOUD||!CLOUD.session||CLOUD.applying) return; clearTimeout(CLOUD.timer); CLOUD.timer=setTimeout(cloudSync,CLOUD.delay); }
+async function cloudSendLink(email){ email=(email||'').trim(); if(!/^\S+@\S+\.\S+$/.test(email)){ CLOUD.err='Enter your email address.'; renderSync(); return; }
+  CLOUD.err=null; renderSync('Sending…');
+  try{ await idt('accounts:sendOobCode',{requestType:'EMAIL_SIGNIN',email,continueUrl:location.origin+location.pathname,canHandleCodeInApp:true});
+    lsSet(CEMAIL,email); CLOUD.sent=email; }catch(e){ CLOUD.err=cloudErr(e); }
+  renderSync(); }
+async function cloudFinishLink(email){ const code=CLOUD.linkCode; email=(email||'').trim(); if(!code||!email) return;
+  CLOUD.err=null; renderSync('Signing in…');
+  try{ const j=await idt('accounts:signInWithEmailLink',{email,oobCode:code}); setSession(j); CLOUD.linkCode=null; CLOUD.sent=null; lsSet(CEMAIL,null);
+    lsSet(CBASE,null); await cloudSync(); }catch(e){ CLOUD.err=cloudErr(e); renderSync(); } }
+function cloudSignOut(){ lsSet(CKEY,null); lsSet(CBASE,null); CLOUD.session=null; CLOUD.last=null; CLOUD.err=null; renderSync(); }
+function ago(t){ const s=Math.round((Date.now()-t)/1000); return s<60?'just now':s<3600?`${Math.round(s/60)} min ago`:new Date(t).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); }
+function renderSync(busyText){ const el=$('syncBody'); if(!el||!CLOUD) return; const C=CLOUD, esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
+  let h='';
+  if(C.session) h=`<p class="sc-line">Signed in as <b>${esc(C.session.email||'you')}</b>${C.last?` · synced ${ago(C.last)}`:''}</p><div class="btnrow"><button class="btn" id="syncNow" type="button">Sync now</button><button class="btn" id="syncOut" type="button">Sign out</button></div>`;
+  else if(C.linkCode) h=`<p class="sc-line">Confirm your email to finish signing in on this device.</p><div class="sc-form"><input type="email" id="syncEmail" autocomplete="email" placeholder="you@example.com"><button class="btn primary" id="syncConfirm" type="button">Sign in</button></div>`;
+  else if(C.sent) h=`<p class="sc-line">We’ve emailed a sign-in link to <b>${esc(C.sent)}</b>. Open it on this device to finish. Check your spam folder if it hasn’t arrived.</p><div class="btnrow"><button class="btn" id="syncRetry" type="button">Use a different email</button></div>`;
+  else h=`<p class="sc-line">Sign in with your email to keep your mistakes, lessons, game history and rating the same on your phone and laptop. No password: we email you a link.</p><div class="sc-form"><input type="email" id="syncEmail" autocomplete="email" placeholder="you@example.com"><button class="btn primary" id="syncSend" type="button">Email me a link</button></div>`;
+  if(busyText) h+=`<p class="sc-note">${esc(busyText)}</p>`; else if(C.err) h+=`<p class="sc-err">${esc(C.err)}</p>`;
+  el.innerHTML=h;
+  const on=(id,f)=>{ const b=$(id); if(b) b.addEventListener('click',f); };
+  on('syncNow',cloudSync); on('syncOut',cloudSignOut);
+  on('syncSend',()=>cloudSendLink($('syncEmail').value)); on('syncConfirm',()=>cloudFinishLink($('syncEmail').value));
+  on('syncRetry',()=>{ C.sent=null; C.err=null; renderSync(); }); }
+function cloudInit(){
+  if(!cloudAvailable()) return;
+  CLOUD={session:lsGet(CKEY),busy:false,again:false,applying:false,timer:null,delay:window.WWBG_CLOUD_TEST?50:8000,last:null,err:null,sent:null,linkCode:null};
+  $('syncCard').hidden=false;
+  // arriving from the email link: ?mode=signIn&oobCode=... (possibly wrapped in a link= parameter)
+  const q=new URLSearchParams(location.search); let code=q.get('mode')==='signIn'?q.get('oobCode'):null;
+  if(!code&&q.get('link')){ try{ const u=new URL(q.get('link')); if(u.searchParams.get('mode')==='signIn') code=u.searchParams.get('oobCode'); }catch(e){} }
+  if(code){ CLOUD.linkCode=code; try{ history.replaceState(null,'',location.pathname+location.hash); }catch(e){}
+    const email=lsGet(CEMAIL); if(email){ cloudFinishLink(email); return; } }
+  renderSync();
+  if(CLOUD.session) cloudSync();
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'&&CLOUD.session&&(!CLOUD.last||Date.now()-CLOUD.last>60e3)) cloudSync(); });
+}
 
 /* ---- progress screen ---- */
 function openProgress(){ state.screen='progress'; showScreens(); renderProgress(); }
@@ -2678,6 +2816,7 @@ $('hotseatChoice').addEventListener('click',()=>startMatch('hotseat'));
 $('learnChoice').addEventListener('click',openLearn);
 $('lessonsChoice').addEventListener('click',openLessons);
 updateLessonsTag();
+cloudInit();
 $('progressChoice').addEventListener('click',openProgress);
 $('pPlayer').addEventListener('change',e=>{ state.pPlayer=e.target.value; renderProgress(); });
 $('pRange').addEventListener('change',()=>renderProgress());
