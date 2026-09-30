@@ -257,6 +257,7 @@
   .dstmark .dlab { font-family: "IBM Plex Mono", monospace; font-size: calc(var(--disc,22px) * .34);
     font-weight: 600; color: var(--hl); background: rgba(0,0,0,.35); padding: 1px 4px; border-radius: 5px; }
   .point.dst, .barzone.dst, .tray.dst { cursor: pointer; }
+  .tray.home:not(.dst) { box-shadow: 0 0 0 2px var(--hl) inset; border-radius: 3px; }
   .point.can, .barzone.can { touch-action: none; }
   .point.can .stack .chk:last-child, .barzone.can .chk:last-child { cursor: grab; }
   .dragover .dstmark { border-style: solid; transform: translate(-50%,-50%) scale(1.25); }
@@ -1625,7 +1626,7 @@ function paintBoard(){
   const tw=$('offW_tray'),tb=$('offB_tray');tw.textContent='';tb.textContent='';
   for(let i=0;i<b.off.w;i++){const c=document.createElement('div');c.className='chk w';c.style.height='calc(var(--disc)*.5)';tw.appendChild(c);}
   for(let i=0;i<b.off.b;i++){const c=document.createElement('div');c.className='chk b';c.style.height='calc(var(--disc)*.5)';tb.appendChild(c);}
-  tw.classList.remove('src','dst','can','sug');tb.classList.remove('src','dst','can','sug');
+  tw.classList.remove('src','dst','can','sug','home');tb.classList.remove('src','dst','can','sug','home');
 }
 function render(){
   paintBoard();
@@ -1639,6 +1640,7 @@ function render(){
   if((state.screen==='match'||quizOn())&&state.phase==='moving'&&isHuman(state.turn)&&!state.busy){
     const srcs=new Set(nextSteps().map(s=>s.from));
     srcs.forEach(s=>zoneEl(s)?.classList.add('can'));
+    if(nextSteps().some(s=>s.to==='off')) zoneEl('off')?.classList.add('can','home');
     if(state.sel!=null&&state.dmap){
       zoneEl(state.sel)?.classList.add('src');
       for(const [key,entry] of state.dmap){
@@ -1677,10 +1679,25 @@ function onBoardClick(e){
     if(z===('bar-'+me))id='bar'; else if(z===('off-'+me))id='off'; else return;} // ignore opponent's bar/tray
   const key=String(id);
   if(state.sel!=null&&state.dmap&&state.dmap.has(key)){ playSteps(state.dmap.get(key).steps); return; }
+  if(id==='off'){ const plan=bearOffPlan(); if(plan&&plan.steps){ playSteps(plan.steps); return; }
+    if(plan&&plan.ambiguous) setStatus('There are several ways to bear off with this roll — pick the checkers yourself.'); }
   const srcs=new Set(nextSteps().map(s=>s.from));
   if(srcs.has(id)){ if(state.sel===id){state.sel=null;state.dmap=null;render();} else selectSource(id); return; }
   state.sel=null;state.dmap=null;render();
 }
+// Tapping the home tray bears off as many checkers as the rest of the roll allows (a 6-4 takes one
+// from the 6-point and one from the 4-point). Among the ways that do that, the one with the fewest
+// other moves; if those still differ, the coach's pick in a game and nothing in a quiz or lesson.
+function bearOffPlan(){
+  const idx=state.played.length, rests=matchingTurns().map(t=>t.slice(idx)).filter(r=>r.length);
+  const offs=r=>r.filter(s=>s.to==='off').length, most=Math.max(0,...rests.map(offs));
+  if(!most) return null;
+  let c=rests.filter(r=>offs(r)===most); const fewest=Math.min(...c.map(r=>r.length-most)); c=c.filter(r=>r.length-most===fewest);
+  const me=state.turn, byKey=new Map(); for(const r of c){ const k=boardKey(replay(state.board,me,r)); if(!byKey.has(k)) byKey.set(k,r); }
+  if(byKey.size===1) return {steps:[...byKey.values()][0].slice()};
+  if(quizOn()) return {ambiguous:true};
+  let best=null,be=-Infinity; for(const r of byKey.values()){ const e=eqAfterMove(replay(state.board,me,r),me); if(e>be){be=e;best=r;} }
+  return {steps:best.slice()}; }
 function selectSource(sel){ state.sel=sel; state.suggest=null;
   state.dmap=destinationsFrom(state.turnStart,state.turn,state.legalTurns,state.played,sel); render(); }
 function playSteps(steps,opts){
@@ -1733,7 +1750,8 @@ function beginHumanTurn(dice){
       setTimeout(()=>{ if(gid!==state.gameId||state.phase!=='moving'||state.played.length||state.turn!==me) return; playSteps(t.slice()); }, spd()?650*spd():0);
       return; } }
   const lead=showLastMove()?lastMoveText():'';
-  setStatus(`${lead}${sideName(me)} rolled <b>${dice[0]}-${dice[1]}</b>${dd}. Drag a checker, or click it then a highlighted square — the far ring plays both dice at once.`);
+  const bo=nextSteps().some(s=>s.to==='off')?' Or tap your home tray to bear off with the whole roll.':'';
+  setStatus(`${lead}${sideName(me)} rolled <b>${dice[0]}-${dice[1]}</b>${dd}. Drag a checker, or click it then a highlighted square — the far ring plays both dice at once.${bo}`);
   render();
 }
 function onRoll(){ if(state.phase==='over'){nextGame();return;} if(state.busy||!(state.phase==='await'&&isHuman(state.turn)))return;
