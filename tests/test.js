@@ -117,20 +117,18 @@ function ok(cond, msg) { if (cond) { pass++; } else { fail++; console.log('  FAI
 }
 
 // 10. Better dice order chosen when one order hits and the other does not.
+// A legal position (15 checkers each) where hitting is clearly right: White's home board has
+// 1, 2, 3, 4 and 6 made, so a checker hit from Black's 8 point faces a nearly closed board.
 {
   const b = { points: new Array(25).fill(0), bar: { w: 0, b: 0 }, off: { w: 0, b: 0 } };
-  b.points[13] = 1;          // white checker to move 5+3
-  b.points[8] = -1;          // black blot 5 away (13->8 with the 5): hitting order
-  b.points[10] = -1;         // black blot 3 away (13->10 with the 3): other order
-  // both orders reach 5; 13->8(hit)->5 vs 13->10(hit)->5. Either way a hit; make only one hittable:
-  b.points[10] = 0;          // remove; now only 13->8->5 path hits en route via the 5 first
-  b.points[5] = 0;
+  b.points[13] = 1;          // white checker to move 5+3: 13->8(hit)->5 or 13->10->5
+  b.points[6] = 3; b.points[4] = 3; b.points[3] = 3; b.points[2] = 3; b.points[1] = 2;
+  b.points[8] = -1;          // black blot, hit only by the 5-first order
+  b.points[24] = -3; b.points[23] = -3; b.points[22] = -4; b.points[21] = -4;
   const turns = E.generateLegalTurns(b, 'w', [5, 3]);
   const d = E.destinationsFrom(b, 'w', turns, [], 13);
-  if (d.has('5')) {
-    const rb = d.get('5').board;
-    ok(rb.bar.b === 1, 'compound to 5 should choose the order that hits the blot on 8');
-  } else { ok(true, 'no compound to 5 in this contrived spot (skip)'); }
+  ok(d.has('5'), 'compound destination 5 offered');
+  ok(d.has('5') && d.get('5').board.bar.b === 1, 'compound to 5 should choose the order that hits the blot on 8');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -1,7 +1,12 @@
 # Wiring the wildbg neural engine into Wildwood Backgammon
 
-The game ships with a **heuristic** coach (pip race, shot counts, board structure) exposed as one
-`analyze(board, player, dice)` function. This guide swaps that for **wildbg**, an open-source
+> **Status:** the game no longer needs this for strong analysis. Its built-in evaluation net was
+> trained to copy wildbg (see CLAUDE.md, "Evaluation net", and `label.rs` here) and gives up only
+> ~0.004–0.009 equity per move against it. This guide remains for a self-hosted build that wants
+> wildbg itself (for example for rollouts).
+
+The game exposes its analysis as one `analyze(board, player, dice)` function. This guide swaps
+that for **wildbg**, an open-source
 neural-net engine (club-to-expert strength), for gold-standard equity — without touching the board,
 rules, or UI.
 

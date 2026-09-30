@@ -15,7 +15,7 @@ const finish=(winner,kind,cube)=>{ E(`state.cube={value:${cube||1},owner:null}; 
 const next=async()=>{ D.getElementById('bannerNew').click(); await wait(1500); };
 // put the board in a quiet "await" state for the side on roll, to probe cube availability
 const probe=(pl)=>{ E(`state.gameId++;state.board=cloneBoard(${JSON.stringify(P['w|Double, take'].b)});state.turn='${pl}';state.phase='await';render();`); return { canW:E("cubeAvailable('w')"), canB:E("cubeAvailable('b')"), dbl:!D.getElementById('doubleBtn').hidden }; };
-(async()=>{ await wait(300);
+(async()=>{ await wait(300); E("state.prefs.level='strong'");  // exact bot cube play
   console.log('Start a match to 5 against the bot');
   const sel=D.getElementById('matchSel'); sel.value='5'; sel.dispatchEvent(new win.Event('change'));
   D.getElementById('playChoice').click(); await wait(1500);

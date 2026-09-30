@@ -14,7 +14,7 @@ const txt=id=>D.getElementById(id).textContent;
 function setup(key,mode='vsai',turn){ const pos=P[key]; E(`
   state.gameId++; state.screen='match'; state.mode='${mode}'; state.board=cloneBoard(${JSON.stringify(pos.b)});
   state.turn='${turn||pos.q}'; state.phase='await'; state.cube={value:1,owner:null}; state.tally={w:0,b:0}; state.coach=true;
-  state.cubeEnabled=true; state.rolled=null; state.pendingCubeNote=null;
+  state.cubeEnabled=true; state.rolled=null; state.pendingCubeNote=null; state.prefs.level='strong'; // exact bot cube play
   document.getElementById('menu').hidden=true; document.getElementById('app').hidden=false;
   document.getElementById('matchPanel').hidden=false; document.getElementById('learnPanel').hidden=true;
   document.getElementById('banner').classList.remove('show'); render();`); }
