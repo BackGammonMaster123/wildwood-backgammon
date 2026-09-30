@@ -123,7 +123,17 @@ free to run. An LLM "explain this move" layer may be added later.
 
 **Persistence**
 - Everything is in localStorage. Every read and write must be wrapped in try/catch.
-- Data keys: `wwbg-mistakes-v1`, `wwbg-history-v1`, `wwbg-games-v1` (the last 20 game records).
+- Data keys: `wwbg-mistakes-v1`, `wwbg-history-v1`, `wwbg-games-v1` (the last 20 game records),
+  `wwbg-rating-v1` (`rating`: `{r, exp, log}`).
+- History entries written since the evaluation net carry `v:2` (and `level` for vs-bot games).
+  The progress screen only uses `v>=2` entries: older ones measured error on the heuristic's scale.
+
+**Scoring** (progress screen)
+- PR (XG's performance rating) = equity lost per non-forced decision ×500, checker + cube
+  (`gamePR`, `per`, bands in `PR_BANDS`). Chart, tiles and table all use it.
+- Rating = FIBS formula against `BOT_LEVELS[level].rating`: `fibsWin`, `rateResult`. A money
+  game is a 1-point match; a match is rated once, when it ends (in `endGame`). Only vs-bot
+  games count. The first rated game starts you at that level's rating (FIBS uses 1500).
 - Settings keys: `wwbg-names`, `wwbg-threshold`, `wwbg-cube`, `wwbg-matchto`, `wwbg-prefs`
   (speed, sound, autoForced, board, level), `wwbg-theme` (light or dark).
 - The game-record store is the global `gameRecs`. Don't name a local variable `games`: a clash

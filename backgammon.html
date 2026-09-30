@@ -503,17 +503,17 @@
     <div class="card" id="pLeak"></div>
     <div class="card">
       <div class="chead">
-        <div><h2 style="margin:0 0 4px;">Checker error per game</h2>
-          <p class="csub">Average loss per checker decision, ×1000 · lower is better</p></div>
+        <div><h2 style="margin:0 0 4px;">Performance rating (PR) per game</h2>
+          <p class="csub">Average equity lost per decision ×500, checker play and cube · lower is better</p></div>
         <div class="legend" id="pLegend">
           <span><svg width="22" height="10" aria-hidden="true"><line x1="1" y1="5" x2="21" y2="5" stroke="var(--series)" stroke-width="2" stroke-linecap="round"/></svg>5-game average</span>
           <span><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="4" fill="var(--series)"/></svg>one game</span>
         </div>
       </div>
-      <div class="chartwrap" id="pChart" tabindex="0" aria-label="Checker error per game chart; use arrow keys to step through games"></div>
+      <div class="chartwrap" id="pChart" tabindex="0" aria-label="Performance rating per game chart; use arrow keys to step through games"></div>
       <details class="ptable"><summary>Show as table</summary><div id="pTable"></div></details>
     </div>
-    <p class="foot">Errors are measured by this app's coach, so treat them as a yardstick against your own past games rather than a rating comparable with XG or GNU Backgammon. Checker and cube errors are shown separately because they're on different scales.</p>
+    <p class="foot"><b>PR</b> (performance rating) is the standard skill measure from eXtreme Gammon: average equity lost per non-forced decision ×500. Bands: under 2.5 world champion · 5 world class · 7.5 expert · 12.5 advanced · 17.5 intermediate · 22.5 casual · 30 beginner. Here the coach does the judging (it is trained to copy the wildbg engine), so treat it as a yardstick against your own past games. <b>Rating</b> uses the FIBS formula against the bot levels (Easy 500, Medium 1700, Strong 2200): a money game counts as a 1-point match, a match counts once when it ends. You start at the rating of the first level you play.</p>
   </section>
 
   <!-- APP (board + a panel that swaps between match & learn) -->
@@ -1814,6 +1814,9 @@ function endGame(res){
   else state.tally[res.winner]+=pts;
   render();
   const vsai=state.mode==='vsai';
+  // rating: a money game is a 1-point match; a match is rated once, when it ends
+  const rd=vsai&&(!M.to||M.over)?rateResult(botLevel(),M.to||1,res.winner==='w'):null;
+  const rTxt=rd==null?'':` Rating ${Math.round(rating.r)} (${rd>=0?'+':'−'}${Math.abs(rd).toFixed(1)}).`;
   const wn=vsai?(res.winner==='w'?'You':'Black'):sideName(res.winner);
   const ln=vsai?(res.winner==='w'?'Black':'You'):sideName(opp(res.winner));
   let how=res.kind==='pass'?`${ln} passed the double`:res.kind==='gammon'?'gammon ×2':res.kind==='backgammon'?'backgammon ×3':'single game';
@@ -1822,7 +1825,7 @@ function endGame(res){
   const nw=vsai?'You':sideName('w'), nb=vsai?'Black':sideName('b');
   if(M.to&&M.over){
     $('bannerTitle').textContent=wn==='You'?'You win the match!':`${wn} wins the match`;
-    $('bannerText').textContent=`${M.score[res.winner]}–${M.score[opp(res.winner)]} in a match to ${M.to}. Final game: ${ptxt} (${how}).`;
+    $('bannerText').textContent=`${M.score[res.winner]}–${M.score[opp(res.winner)]} in a match to ${M.to}. Final game: ${ptxt} (${how}).${rTxt}`;
     $('bannerNew').textContent='New match';
   } else if(M.to){
     $('bannerTitle').textContent=wn==='You'?'You win the game':`${wn} wins the game`;
@@ -1831,7 +1834,7 @@ function endGame(res){
     $('bannerNew').textContent='Next game';
   } else {
     $('bannerTitle').textContent=wn==='You'?'You win!':`${wn} wins`;
-    $('bannerText').textContent=`${wn==='You'?'You score':wn+' scores'} ${ptxt} (${how}). Session: ${tallyText()}.`;
+    $('bannerText').textContent=`${wn==='You'?'You score':wn+' scores'} ${ptxt} (${how}). Session: ${tallyText()}.${rTxt}`;
     $('bannerNew').textContent='New game';
   }
   $('bannerReview').hidden=!state.lastRec;
@@ -2038,6 +2041,19 @@ function startRec(){ const M=state.match; state.rollCubeAvail=false;
 function finishRec(res,pts){ const r=state.rec; state.rec=null; if(!r||!r.turns.length){ state.lastRec=null; return; }
   r.result={winner:res.winner,kind:res.kind,pts}; r.final=cloneBoard(state.board); r.finalCube={...state.cube};
   gameRecs.push(r); if(gameRecs.length>20) gameRecs=gameRecs.slice(-20); saveGames(); state.lastRec=r; }
+/* ---- rating: FIBS formula against the bot levels' fixed ratings ---- */
+// P(win) = 1/(1+10^(-(you-them)*sqrt(n)/2000)); the winner gains 4*K*sqrt(n)*(1-P(winner)) and the
+// loser loses the same, K = max(1, 5 - experience/100), experience = match points played.
+// FIBS starts everyone at 1500; here you start at the first level you play, so it means something at once.
+const RKEY='wwbg-rating-v1';
+let rating=(()=>{ try{ const r=JSON.parse(localStorage.getItem(RKEY)||'null'); if(r&&typeof r.exp==='number'&&Array.isArray(r.log)) return r; }catch(e){} return {r:null,exp:0,log:[]}; })();
+function saveRating(){ try{ rating.log=rating.log.slice(-200); localStorage.setItem(RKEY,JSON.stringify(rating)); }catch(e){} }
+const fibsWin=(ra,rb,n)=>1/(1+Math.pow(10,-(ra-rb)*Math.sqrt(n)/2000));
+function rateResult(level,n,won){ const L=BOT_LEVELS[level]; if(!L) return null;
+  if(rating.r==null) rating.r=L.rating;
+  const K=Math.max(1,5-rating.exp/100), p=fibsWin(rating.r,L.rating,n);
+  const d=won?4*K*Math.sqrt(n)*(1-p):-4*K*Math.sqrt(n)*p;
+  rating.r+=d; rating.exp+=n; rating.log.push({ts:Date.now(),r:Math.round(rating.r*10)/10,d:Math.round(d*10)/10,level,n,won}); saveRating(); return d; }
 function recordQuiz(right,kind){ hist.quiz.push({ts:Date.now(),right,kind}); saveHist(); }
 const blankGs=()=>({n:0,loss:0,cN:0,cLoss:0,cont:{n:0,loss:0},race:{n:0,loss:0}});
 function addCube(pl,err){ if(!state.gs||!isHuman(pl)) return; const g=state.gs[pl]; g.cN++; g.cLoss+=Math.max(0,err); }
@@ -2161,9 +2177,13 @@ function stopQuiz(silent){ const q=state.quiz; q.active=false; q.answered=false;
 
 /* ---- progress screen ---- */
 function openProgress(){ state.screen='progress'; showScreens(); renderProgress(); }
-const per=(loss,n)=>n?loss/n*1000:null;
-const f0=x=>x==null?'—':Math.round(x).toString();
-function sumG(list,key){ let n=0,l=0; for(const g of list){ const o=key==='chk'?{n:g.n,loss:g.loss}:key==='cube'?{n:g.cN,loss:g.cLoss}:g[key]; n+=o.n; l+=o.loss; } return {n,loss:l,rate:per(l,n)}; }
+const per=(loss,n)=>n?loss/n*500:null;   // PR: equity lost per decision x 500
+// XG's PR bands (upper bounds)
+const PR_BANDS=[[2.5,'World champion'],[5,'World class'],[7.5,'Expert'],[12.5,'Advanced'],[17.5,'Intermediate'],[22.5,'Casual player'],[30,'Beginner'],[Infinity,'Still learning']];
+const prBand=pr=>pr==null?'':PR_BANDS.find(b=>pr<b[0])[1];
+const gamePR=g=>per(g.loss+(g.cLoss||0),g.n+(g.cN||0));
+const f0=x=>x==null?'—':Math.round(x).toString(), f1=x=>x==null?'—':x.toFixed(1);
+function sumG(list,key){ let n=0,l=0; for(const g of list){ const o=key==='chk'?{n:g.n,loss:g.loss}:key==='cube'?{n:g.cN,loss:g.cLoss}:key==='all'?{n:g.n+g.cN,loss:g.loss+g.cLoss}:g[key]; n+=o.n; l+=o.loss; } return {n,loss:l,rate:per(l,n)}; }
 function renderProgress(){
   const all=hist.games, names=[...new Set(all.map(g=>g.name))];
   const ps=$('pPlayer'), prev=state.pPlayer||(names.includes('You')?'You':names[0]);
@@ -2171,50 +2191,55 @@ function renderProgress(){
   if(!names.length){ const o=document.createElement('option'); o.textContent='—'; ps.appendChild(o); }
   if(names.includes(prev)) ps.value=prev; state.pPlayer=ps.value;
   const range=parseInt($('pRange').value,10)||0;
-  let games=all.filter(g=>g.name===state.pPlayer); if(range) games=games.slice(-range);
+  const mine=all.filter(g=>g.name===state.pPlayer), legacy=mine.filter(g=>!(g.v>=2)).length;
+  let games=mine.filter(g=>g.v>=2); if(range) games=games.slice(-range);   // older games used the old heuristic's scale
+  const legacyNote=legacy?`<p class="csub" style="margin-top:8px;">${legacy} earlier game${legacy>1?'s':''} from before the coach's engine upgrade ${legacy>1?'aren\'t':'isn\'t'} included: ${legacy>1?'they were':'it was'} measured on a different scale.</p>`:'';
   // --- quiz tile data (global)
   const since=Date.now()-30*864e5, qz=hist.quiz.filter(q=>q.ts>=since), qRight=qz.filter(q=>q.right).length;
   const mastered=mistakes.filter(m=>m.sr&&m.sr.mastered).length, due=quizPool().due.length;
   const tile=(label,value,unit,delta,cls)=>`<div class="tile"><div class="tl">${label}</div><div class="tv">${value}${unit?`<small>${unit}</small>`:''}</div><div class="td ${cls||''}">${delta||'&nbsp;'}</div></div>`;
   if(!games.length){
     $('pTiles').innerHTML=tile('Games tracked','0','','Finish a game to start tracking')+tile('Quiz, last 30 days',qz.length?Math.round(qRight/qz.length*100)+'%':'—','',`${mastered} mastered · ${due} due`);
-    $('pLeak').innerHTML='<div class="empty">No finished games yet'+(names.length?' for this player':'')+'. Play against the bot or pass &amp; play: every finished game adds a point to the chart, and the breakdown below shows where you lose the most.</div>';
+    $('pLeak').innerHTML='<div class="empty">No finished games yet'+(names.length?' for this player':'')+'. Play against the bot or pass &amp; play: every finished game adds a point to the chart, and the breakdown below shows where you lose the most.</div>'+legacyNote;
     $('pChart').innerHTML='<div class="empty" style="padding:30px 4px;">Your chart appears after your first finished game.</div>'; $('pTable').textContent=''; return; }
   const last=games.slice(-10), before=games.slice(-20,-10);
-  const cL=sumG(last,'chk'), cB=sumG(before,'chk'), kL=sumG(last,'cube');
+  const cL=sumG(last,'all'), cB=sumG(before,'all'), kL=sumG(last,'cube');
   const wins=games.filter(g=>g.won).length;
   let dTxt='', dCls='';
   if(before.length>=3&&cL.rate!=null&&cB.rate!=null){ const d=cL.rate-cB.rate;
-    dTxt=Math.abs(d)<1?'about the same as the 10 before':`${d<0?'▼':'▲'} ${Math.abs(Math.round(d))} vs the 10 before · ${d<0?'improving':'slipping'}`; dCls=Math.abs(d)<1?'':(d<0?'good':'bad'); }
+    dTxt=Math.abs(d)<0.5?'about the same as the 10 before':`${d<0?'▼':'▲'} ${Math.abs(d).toFixed(1)} vs the 10 before · ${d<0?'improving':'slipping'}`; dCls=Math.abs(d)<0.5?'':(d<0?'good':'bad'); }
   else dTxt=`over the last ${last.length} game${last.length>1?'s':''}`;
+  const rl=rating.log, r10=rl.slice(-10), rD=r10.reduce((a,x)=>a+x.d,0);
+  const ratingTile=state.pPlayer==='You'?tile('Rating',rating.r==null?'—':Math.round(rating.r),'',rating.r==null?'play the bot to get rated':`${rD>=0?'▲':'▼'} ${Math.abs(Math.round(rD))} over the last ${r10.length} · ${rating.exp} match pts played`,rating.r==null||Math.abs(rD)<1?'':(rD>0?'good':'bad')):'';
   $('pTiles').innerHTML=
     tile('Games tracked',games.length,'',`won ${Math.round(wins/games.length*100)}%`)+
-    tile('Checker error (last 10)',f0(cL.rate),'per move',dTxt,dCls)+
-    tile('Cube error (last 10)',f0(kL.rate),kL.n?'per decision':'',kL.n?`${kL.n} cube decision${kL.n>1?'s':''}`:'no cube decisions yet')+
+    tile('PR (last 10)',f1(cL.rate),prBand(cL.rate),dTxt,dCls)+
+    ratingTile+
+    tile('Cube PR (last 10)',f1(kL.rate),'',kL.n?`${kL.n} cube decision${kL.n>1?'s':''}`:'no cube decisions yet')+
     tile('Quiz, last 30 days',qz.length?Math.round(qRight/qz.length*100)+'%':'—',qz.length?'right':'',`${mastered} mastered · ${due} due`);
   // --- biggest leak
   const ct=sumG(games,'cont'), rc=sumG(games,'race'), cu=sumG(games,'cube'), tot=sumG(games,'chk');
   let lines=[];
   if(ct.n&&rc.n){ const worse=ct.rate>=rc.rate?['contact positions',ct,'races',rc]:['races',rc,'contact positions',ct];
     const share=tot.loss?Math.round(worse[1].loss/tot.loss*100):0;
-    lines.push(`Your checker play loses the most in <b>${worse[0]}</b>: ${f0(worse[1].rate)} per move, against ${f0(worse[3].rate)} in ${worse[2]} (${share}% of everything you give up in checker play).`); }
-  else if(ct.n||rc.n) lines.push(`So far every tracked move was ${ct.n?'a contact position':'a race'}: ${f0((ct.n?ct:rc).rate)} per move.`);
-  if(cu.n) lines.push(`Cube decisions: <b>${f0(cu.rate)}</b> per decision over ${cu.n} decision${cu.n>1?'s':''}${cu.rate>60?' — worth drilling in the quiz, where your cube mistakes come back as questions.':'.'}`);
+    lines.push(`Your checker play loses the most in <b>${worse[0]}</b>: PR ${f0(worse[1].rate)}, against ${f0(worse[3].rate)} in ${worse[2]} (${share}% of everything you give up in checker play).`); }
+  else if(ct.n||rc.n) lines.push(`So far every tracked move was ${ct.n?'a contact position':'a race'}: PR ${f0((ct.n?ct:rc).rate)}.`);
+  if(cu.n) lines.push(`Cube decisions: PR <b>${f0(cu.rate)}</b> over ${cu.n} decision${cu.n>1?'s':''}${cu.rate>30?' — worth drilling in the quiz, where your cube mistakes come back as questions.':'.'}`);
   if(due) lines.push(`${due} logged position${due>1?'s are':' is'} due for review in the quiz.`);
-  $('pLeak').innerHTML=`<h2>Where you lose the most</h2><div class="leak">${lines.join('<br>')}</div>`+(mistakes.length?`<div class="btnrow" style="margin-top:10px;"><button class="btn" id="pToQuiz" type="button">Open the quiz</button></div>`:'');
+  $('pLeak').innerHTML=`<h2>Where you lose the most</h2><div class="leak">${lines.join('<br>')}</div>`+legacyNote+(mistakes.length?`<div class="btnrow" style="margin-top:10px;"><button class="btn" id="pToQuiz" type="button">Open the quiz</button></div>`:'');
   if($('pToQuiz')) $('pToQuiz').addEventListener('click',openLearn);
   drawProgressChart(games); renderProgressTable(games); }
 function drawProgressChart(games){
   const wrap=$('pChart'); wrap.textContent='';
-  const pts=games.map((g,i)=>({g,i,e:per(g.loss,g.n)})).filter(p=>p.e!=null);
+  const pts=games.map((g,i)=>({g,i,e:gamePR(g)})).filter(p=>p.e!=null);
   if(!pts.length){ wrap.innerHTML='<div class="empty" style="padding:30px 4px;">No checker decisions recorded yet.</div>'; return; }
-  pts.forEach((p,k)=>{ const w=pts.slice(Math.max(0,k-4),k+1); p.avg=w.reduce((a,x)=>a+x.g.loss,0)/w.reduce((a,x)=>a+x.g.n,0)*1000; });
+  pts.forEach((p,k)=>{ const w=pts.slice(Math.max(0,k-4),k+1); p.avg=w.reduce((a,x)=>a+x.g.loss+x.g.cLoss,0)/w.reduce((a,x)=>a+x.g.n+x.g.cN,0)*500; });
   const W=Math.max(300,wrap.clientWidth||700), H=250, ml=38, mr=58, mt=12, mb=28;
   const maxV=Math.max(...pts.map(p=>Math.max(p.e,p.avg)))*1.1||1;
   const mag=Math.pow(10,Math.floor(Math.log10(maxV/4))), step=[1,2,2.5,5,10,20].map(x=>x*mag).find(x=>Math.ceil(maxV/x)<=4), nT=Math.ceil(maxV/step), yMax=step*nT;
   const X=k=>pts.length===1?(ml+(W-ml-mr)/2):ml+(W-ml-mr)*k/(pts.length-1), Y=v=>mt+(H-mt-mb)*(1-v/yMax);
   const NS='http://www.w3.org/2000/svg', el=(t,a)=>{ const e=document.createElementNS(NS,t); for(const k in a) e.setAttribute(k,a[k]); return e; };
-  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':`Checker error per game, ${pts.length} games`});
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':`Performance rating per game, ${pts.length} games`});
   for(let t=0;t<=nT;t++){ const v=step*t, y=Y(v);
     svg.appendChild(el('line',{x1:ml,x2:W-mr,y1:y,y2:y,stroke:'var(--line)','stroke-width':1}));
     const tx=el('text',{x:ml-6,y:y+4,'text-anchor':'end','font-size':11,fill:'var(--ink-soft)','font-family':'IBM Plex Mono, monospace'}); tx.textContent=Math.round(v); svg.appendChild(tx); }
@@ -2235,8 +2260,8 @@ function drawProgressChart(games){
     const g=p.g, d=new Date(g.ts);
     tip.textContent='';
     const l1=document.createElement('div'); l1.textContent=`Game ${k+1} · ${d.toLocaleDateString(undefined,{day:'numeric',month:'short'})}`;
-    const l2=document.createElement('div'); const b=document.createElement('b'); b.textContent=Math.round(p.e); l2.appendChild(b); l2.appendChild(document.createTextNode(` per move · 5-game avg ${Math.round(p.avg)}`));
-    const l3=document.createElement('div'); l3.textContent=`${g.won?'Won':'Lost'} ${g.pts} pt${g.pts>1?'s':''} · ${g.n} moves${g.cN?` · cube ${Math.round(per(g.cLoss,g.cN))} over ${g.cN}`:''}${g.recId&&gameRecs.some(x=>x.id===g.recId)?' · click to review':''}`;
+    const l2=document.createElement('div'); const b=document.createElement('b'); b.textContent=p.e.toFixed(1); l2.appendChild(b); l2.appendChild(document.createTextNode(` PR (${prBand(p.e).toLowerCase()}) · 5-game avg ${Math.round(p.avg)}`));
+    const l3=document.createElement('div'); l3.textContent=`${g.won?'Won':'Lost'} ${g.pts} pt${g.pts>1?'s':''} · ${g.n} moves${g.level?` · vs ${BOT_LEVELS[g.level].label}`:''}${g.cN?` · ${g.cN} cube decision${g.cN>1?'s':''}`:''}${g.recId&&gameRecs.some(x=>x.id===g.recId)?' · click to review':''}`;
     tip.append(l1,l2,l3); tip.hidden=false;
     const tx=X(k)*sx, left=Math.min(Math.max(4,tx+12), wrap.clientWidth-tip.offsetWidth-4);
     tip.style.left=(tx+12+tip.offsetWidth>wrap.clientWidth?Math.max(4,tx-tip.offsetWidth-12):left)+'px'; tip.style.top='6px'; };
@@ -2249,8 +2274,8 @@ function drawProgressChart(games){
   wrap.onblur=hide; }
 function renderProgressTable(games){
   const rows=games.map((g,i)=>{ const d=new Date(g.ts);
-    return `<tr><td>${i+1}</td><td>${d.toLocaleDateString(undefined,{day:'numeric',month:'short'})}</td><td>${g.mode==='vsai'?'vs bot':'pass &amp; play'}${g.matchTo?` · to ${g.matchTo}`:''}</td><td>${g.won?'won':'lost'} ${g.pts}</td><td>${g.n}</td><td>${f0(per(g.loss,g.n))}</td><td>${g.cN}</td><td>${f0(per(g.cLoss,g.cN))}</td><td>${g.recId&&gameRecs.some(x=>x.id===g.recId)?`<button class="pill" type="button" data-rev="${g.recId}">Review</button>`:''}</td></tr>`; }).reverse().join('');
-  $('pTable').innerHTML=`<div class="tw"><table><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Result</th><th>Moves</th><th>Error / move</th><th>Cube dec.</th><th>Error / cube</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    return `<tr><td>${i+1}</td><td>${d.toLocaleDateString(undefined,{day:'numeric',month:'short'})}</td><td>${g.mode==='vsai'?`vs bot${g.level?' ('+BOT_LEVELS[g.level].label+')':''}`:'pass &amp; play'}${g.matchTo?` · to ${g.matchTo}`:''}</td><td>${g.won?'won':'lost'} ${g.pts}</td><td>${g.n}</td><td>${f1(gamePR(g))}</td><td>${g.cN}</td><td>${f1(per(g.cLoss,g.cN))}</td><td>${g.recId&&gameRecs.some(x=>x.id===g.recId)?`<button class="pill" type="button" data-rev="${g.recId}">Review</button>`:''}</td></tr>`; }).reverse().join('');
+  $('pTable').innerHTML=`<div class="tw"><table><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Result</th><th>Moves</th><th>PR</th><th>Cube dec.</th><th>Cube PR</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
   $('pTable').querySelectorAll('[data-rev]').forEach(b=>b.addEventListener('click',()=>openReview(gameRecs.find(x=>x.id===b.dataset.rev),'progress'))); }
 
 /* ---- post-game review ---- */
