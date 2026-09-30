@@ -1,7 +1,7 @@
 // Live check of the Firebase project against firebase/database.rules.json. Creates a throwaway
 // email/password user, checks it can write and read its own /users/<uid> (as sync does), that it
 // can't read someone else's data or write unknown keys, then deletes the user and its data.
-//   node tools/firebase-smoke.js
+//   node tools/firebase-smoke.js      (behind a proxy: NODE_USE_ENV_PROXY=1 node tools/firebase-smoke.js)
 const API_KEY = 'AIzaSyC2Ziw4Jtdm-isG8Qfw_QeTE_uWwJIptc0';
 const DB = 'https://wildwood-backgammon-default-rtdb.europe-west1.firebasedatabase.app';
 const idt = async (path, body) => { const r = await fetch(`https://identitytoolkit.googleapis.com/v1/${path}?key=${API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return { status: r.status, j: await r.json() }; };
