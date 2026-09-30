@@ -94,7 +94,17 @@ free to run. An LLM "explain this move" layer may be added later.
 ### UI (the second half of the `<script>` in `backgammon.html`)
 
 **Screens and modes**
-- Screens: `menu`, `match`, `learn` (mistake replay and quiz), `review` (post-game), `progress`.
+- Screens: `menu`, `match`, `learn` (mistake replay and quiz, or lessons), `review` (post-game), `progress`.
+
+**Lessons** (`LESSONS`, `LESSON_POS`, `state.lesson`)
+- Five lessons (opening, primes, bearoff, doubling, taking): intro text in `LESSONS`, practice
+  positions in `LESSON_POS` (between the `LESSON_POS:begin/end` markers, written by
+  `tools/build-lessons.js` from `tools/find-lesson-positions.js`, which keeps only positions
+  where wildbg agrees with the coach). Each position stores its answer (`a`); `tests/lesson-test.js`
+  fails if a retrained net changes one, so re-pick positions after retraining if it does.
+- Practice runs through the quiz: `quizItem(id)` looks in `state.lesson.items` before the mistakes
+  log. Lesson answers never touch the mistakes log, its spaced-repetition schedule or quiz stats.
+  Progress is in `wwbg-lessons-v1`. The learner is always White.
 - Modes: `state.mode` is `vsai` or `hotseat`. `isHuman(p)` is quiz-aware.
 
 **Turn state**
@@ -124,7 +134,7 @@ free to run. An LLM "explain this move" layer may be added later.
 **Persistence**
 - Everything is in localStorage. Every read and write must be wrapped in try/catch.
 - Data keys: `wwbg-mistakes-v1`, `wwbg-history-v1`, `wwbg-games-v1` (the last 20 game records),
-  `wwbg-rating-v1` (`rating`: `{r, exp, log}`).
+  `wwbg-rating-v1` (`rating`: `{r, exp, log}`), `wwbg-lessons-v1` (`lessonProg`).
 - History entries written since the evaluation net carry `v:2` (and `level` for vs-bot games).
   The progress screen only uses `v>=2` entries: older ones measured error on the heuristic's scale.
 

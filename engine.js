@@ -177,7 +177,9 @@ function gameResult(b) {
 }
 
 // approximate number of rolls (out of 36) with which opponent can hit `point` (a blot of player p)
-function hitRolls(b, victim, point) {
+function hitRolls(b, victim, point) { return hitMask(b, victim, point).filter(Boolean).length; }
+// Rolls (36, as a*6+c for dice a,c in 1..6) that hit victim's blot on `point`.
+function hitMask(b, victim, point) {
   const o = opp(victim);
   // distances from each opponent checker (incl bar) to the blot, in opp's direction of travel
   const dists = [];
@@ -194,9 +196,9 @@ function hitRolls(b, victim, point) {
     if (dist >= 1) dists.push(dist);
   }
   const distSet = new Set(dists.filter((x) => x >= 1 && x <= 24));
-  if (distSet.size === 0) return 0;
+  const mask = new Array(36).fill(false);
+  if (distSet.size === 0) return mask;
   const blocked = (pt) => pt >= 1 && pt <= 24 && oppCount(b, victim, pt) >= 2; // 2+ of victim blocks opp landing
-  let hits = 0;
   for (let a = 1; a <= 6; a++) {
     for (let c = 1; c <= 6; c++) {
       let hit = false;
@@ -219,10 +221,16 @@ function hitRolls(b, victim, point) {
           if (distSet.has(a * mult) && a * mult <= 24) { hit = true; break; }
         }
       }
-      if (hit) hits++;
+      if (hit) mask[(a - 1) * 6 + (c - 1)] = true;
     }
   }
-  return hits;
+  return mask;
+}
+// Rolls out of 36 that hit at least one of p's blots (a roll hitting two blots counts once).
+function shotRolls(b, p) {
+  const any = new Array(36).fill(false);
+  for (const bl of blots(b, p)) hitMask(b, p, bl.point).forEach((h, i) => { if (h) any[i] = true; });
+  return any.filter(Boolean).length;
 }
 
 // blots of player p with their shot counts
@@ -757,7 +765,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     startingBoard, cloneBoard, singleMoves, applyStep, replay, generateLegalTurns,
     pipCount, bornOff, gameResult, evaluate, analyze, blots, hitRolls, turnLabel, stepLabel,
-    BOT_LEVELS, botChoose, botCubeView,
-    homePointsMade, backCheckers, destinationsFrom, featureScore, winProbOnRoll, probsOnRoll, probFeatures, netInputs, NET_IN, hasContact, phi, cubefulEquity, cubeAnalysis, cubeError, CAL, MET, metGet, matchCubeAnalysis, cubelessEq, quickBest, eqAfterMove, rollLuck, whiteWinChance, boardKey,
+    BOT_LEVELS, botChoose, botCubeView, shotRolls,
+    homePointsMade, backCheckers, longestPrime, destinationsFrom, featureScore, winProbOnRoll, probsOnRoll, probFeatures, netInputs, NET_IN, hasContact, phi, cubefulEquity, cubeAnalysis, cubeError, CAL, MET, metGet, matchCubeAnalysis, cubelessEq, quickBest, eqAfterMove, rollLuck, whiteWinChance, boardKey,
   };
 }

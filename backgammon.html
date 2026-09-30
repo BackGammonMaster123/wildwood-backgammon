@@ -158,6 +158,13 @@
   .choice:hover { border-color: var(--accent); transform: translateY(-2px); }
   .choice .k { font-family: "Fraunces", serif; font-size: 20px; font-weight: 600; }
   .choice .d { color: var(--ink-soft); font-size: 13.5px; line-height: 1.5; }
+  .lessonlist { display: flex; flex-direction: column; gap: 10px; }
+  .lessonrow { text-align: left; background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; cursor: pointer; font: inherit; }
+  .lessonrow:hover { border-color: var(--accent); }
+  .lessonrow .lt { font-weight: 600; } .lessonrow .ls { color: var(--ink-soft); font-size: 13px; margin-top: 2px; }
+  .lessonrow .lst { font-size: 12.5px; margin-top: 4px; color: var(--accent); font-family: "IBM Plex Mono", monospace; }
+  .lessonrow .lst.done { color: var(--good); }
+  .lessonintro p { font-size: 14px; line-height: 1.55; margin: 0 0 10px; }
   .choice .tag { margin-top: 4px; font-family: "IBM Plex Mono", monospace; font-size: 12px;
     color: var(--accent); font-weight: 600; }
   .choice .ico { width: 42px; height: 42px; border-radius: 11px; display: grid; place-items: center;
@@ -460,6 +467,12 @@
         <div class="d">Replay the exact positions where you blundered. See what you played, what was best, and why.</div>
         <div class="tag" id="learnTag">no mistakes logged yet</div>
       </button>
+      <button class="choice" id="lessonsChoice" type="button">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5.5C4 4.7 4.7 4 5.5 4H11v15H5.5C4.7 19 4 18.3 4 17.5v-12Z"/><path d="M20 5.5c0-.8-.7-1.5-1.5-1.5H13v15h5.5c.8 0 1.5-.7 1.5-1.5v-12Z"/></svg></div>
+        <div class="k">Lessons</div>
+        <div class="d">Five short lessons: opening moves, building primes, bearing off safely, when to double and when to take. Each ends with real positions to practise.</div>
+        <div class="tag" id="lessonsTag">5 lessons</div>
+      </button>
       <button class="choice" id="progressChoice" type="button">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19h16"/><path d="M5 15l4-4 3 3 6-7"/><circle cx="18" cy="7" r="1.2" fill="currentColor" stroke="none"/></svg></div>
         <div class="k">Your progress</div>
@@ -646,6 +659,7 @@
 
     <!-- LEARN panel -->
     <div class="panel-col" id="learnPanel" hidden>
+      <div class="card" id="lessonCard" hidden><div id="lessonBody"></div></div>
       <div class="card quizcard" id="quizCard">
         <div class="qhead"><h2 style="margin:0;">Quiz</h2><span class="qstats" id="quizStats"></span></div>
         <div id="quizBody"></div>
@@ -654,7 +668,7 @@
         <h2>Learn from mistakes</h2>
         <div id="learnDetail"><div class="empty">Pick a logged position to review it here.</div></div>
       </div>
-      <div class="card">
+      <div class="card" id="mlistCard">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;">
           <h2 style="margin:0;">Logged mistakes</h2>
           <div style="display:flex;gap:8px;align-items:center;">
@@ -849,7 +863,9 @@ function gameResult(b) {
 }
 
 // approximate number of rolls (out of 36) with which opponent can hit `point` (a blot of player p)
-function hitRolls(b, victim, point) {
+function hitRolls(b, victim, point) { return hitMask(b, victim, point).filter(Boolean).length; }
+// Rolls (36, as a*6+c for dice a,c in 1..6) that hit victim's blot on `point`.
+function hitMask(b, victim, point) {
   const o = opp(victim);
   // distances from each opponent checker (incl bar) to the blot, in opp's direction of travel
   const dists = [];
@@ -866,9 +882,9 @@ function hitRolls(b, victim, point) {
     if (dist >= 1) dists.push(dist);
   }
   const distSet = new Set(dists.filter((x) => x >= 1 && x <= 24));
-  if (distSet.size === 0) return 0;
+  const mask = new Array(36).fill(false);
+  if (distSet.size === 0) return mask;
   const blocked = (pt) => pt >= 1 && pt <= 24 && oppCount(b, victim, pt) >= 2; // 2+ of victim blocks opp landing
-  let hits = 0;
   for (let a = 1; a <= 6; a++) {
     for (let c = 1; c <= 6; c++) {
       let hit = false;
@@ -891,10 +907,16 @@ function hitRolls(b, victim, point) {
           if (distSet.has(a * mult) && a * mult <= 24) { hit = true; break; }
         }
       }
-      if (hit) hits++;
+      if (hit) mask[(a - 1) * 6 + (c - 1)] = true;
     }
   }
-  return hits;
+  return mask;
+}
+// Rolls out of 36 that hit at least one of p's blots (a roll hitting two blots counts once).
+function shotRolls(b, p) {
+  const any = new Array(36).fill(false);
+  for (const bl of blots(b, p)) hitMask(b, p, bl.point).forEach((h, i) => { if (h) any[i] = true; });
+  return any.filter(Boolean).length;
 }
 
 // blots of player p with their shot counts
@@ -2084,6 +2106,8 @@ function quizPool(){ const now=Date.now(), open=mistakes.filter(m=>!(m.sr&&m.sr.
   const due=open.filter(m=>!m.sr||m.sr.due<=now).sort((a,b)=>(srOf(a).box-srOf(b).box)||(srOf(a).due-srOf(b).due));
   const next=open.filter(m=>m.sr&&m.sr.due>now).sort((a,b)=>a.sr.due-b.sr.due)[0];
   return {open, due, mastered:mistakes.length-open.length, nextDue:next?next.sr.due:null}; }
+// A quiz question comes from the active lesson, if any, or from the mistakes log.
+const quizItem=id=>(state.lesson&&state.lesson.items.find(x=>x.id===id))||mistakes.find(x=>x.id===id);
 function quizStatsText(){ const q=state.quiz.session; return q.answered?`${q.correct}/${q.answered} right this session`:''; }
 function renderQuizIdle(){ const P=quizPool(), el=$('quizBody'); $('quizStats').textContent=quizStatsText();
   if(!mistakes.length){ el.innerHTML='<div class="empty">Your logged mistakes become quiz questions. Play a game first.</div>'; return; }
@@ -2096,6 +2120,7 @@ function renderQuizIdle(){ const P=quizPool(), el=$('quizBody'); $('quizStats').
   if($('quizStart')) $('quizStart').addEventListener('click',()=>startQuiz());
   if($('quizPractice')) $('quizPractice').addEventListener('click',()=>startQuiz(null,true)); }
 function pickQuiz(forceId,practice){
+  if(state.lesson) return state.lesson.items[state.lesson.idx]||null;
   if(forceId) return mistakes.find(m=>m.id===forceId)||null;
   const P=quizPool(), seen=new Set(state.quiz.session.seen);
   let c=P.due.filter(m=>m.id!==state.quiz.lastId);
@@ -2130,19 +2155,21 @@ function startQuiz(forceId,practice){
   $('quizStop').addEventListener('click',()=>stopQuiz());
   render(); }
 function finishQuizMove(){
-  const q=state.quiz, m=mistakes.find(x=>x.id===q.id); if(!m) return;
+  const q=state.quiz, m=quizItem(q.id); if(!m) return;
   const a=analyze(state.turnStart,q.player,state.rolled), best=a.moves[0], key=boardKey(state.board);
   const pm=a.moves.find(x=>boardKey(x.board)===key), loss=best.equity-(pm?pm.equity:evaluate(state.board,q.player).score);
   answerQuiz(loss<=0.02, {loss, played:state.played.slice(), best, playedExpl:pm?pm.explanation:''}); }
-function answerCubeQuiz(action){ const m=mistakes.find(x=>x.id===state.quiz.id); if(!m||state.quiz.answered) return;
+function answerCubeQuiz(action){ const m=quizItem(state.quiz.id); if(!m||state.quiz.answered) return;
   answerQuiz(action===m.best, {action}); }
 // right: bool; info: details; revealed: user gave up
 function answerQuiz(right,info,revealed){
-  const q=state.quiz, m=mistakes.find(x=>x.id===q.id); if(!m||q.answered) return;
+  const q=state.quiz, m=quizItem(q.id); if(!m||q.answered) return;
   q.answered=true; if(revealed) right=false;
-  srUpdate(m,right); saveMistakes(mistakes); updateMenuCounts();
-  q.session.answered++; if(right) q.session.correct++; q.session.seen.push(m.id); q.lastId=m.id;
-  recordQuiz(right, m.type==='cube'?'cube':'move');
+  const L=state.lesson;
+  if(L){ if(right) L.right++; }   // lesson answers don't touch the mistakes log or its schedule
+  else { srUpdate(m,right); saveMistakes(mistakes); updateMenuCounts();
+    q.session.answered++; if(right) q.session.correct++; q.session.seen.push(m.id); q.lastId=m.id;
+    recordQuiz(right, m.type==='cube'?'cube':'move'); }
   let verdict;
   if(q.kind==='move'){
     const bestSteps=info&&info.best?info.best.steps:m.bestSteps, me=q.player;
@@ -2158,22 +2185,116 @@ function answerQuiz(right,info,revealed){
     verdict=right?`<div class="verdict good"><span class="lead">✓ Right — ${m.bestLabel}.</span><br>${m.text}</div>`
       :`<div class="verdict bad"><span class="lead">Not quite — best is ${m.bestLabel}${chosen?` (you chose ${ACTION[chosen]})`:''}.</span><br>${m.text}</div>`;
   }
-  const r=srOf(m), before=m.type==='cube'?`Originally you chose ${m.playedLabel} (−${m.loss.toFixed(3)}).`:`Originally you played <span class="mono">${m.playedLabel}</span> (−${m.loss.toFixed(3)}).`;
-  const sched=r.mastered?'Mastered — it leaves the rotation.':(right?`Next review in ${fmtWait(r.due-Date.now())} (box ${r.box}/5).`:'It will come back again shortly.');
-  const P=quizPool();
-  $('quizBody').innerHTML=verdict+`<p class="qmeta">${before} ${sched}</p><div class="btnrow">`+
+  let meta, nextLabel;
+  if(L){ meta=`<b>Lesson tip:</b> ${m.tip}`; nextLabel=L.idx<L.items.length-1?'Next position':'Finish lesson'; renderLessonHead(); }
+  else { const r=srOf(m), before=m.type==='cube'?`Originally you chose ${m.playedLabel} (−${m.loss.toFixed(3)}).`:`Originally you played <span class="mono">${m.playedLabel}</span> (−${m.loss.toFixed(3)}).`;
+    const sched=r.mastered?'Mastered — it leaves the rotation.':(right?`Next review in ${fmtWait(r.due-Date.now())} (box ${r.box}/5).`:'It will come back again shortly.');
+    meta=`${before} ${sched}`; nextLabel=quizPool().due.filter(x=>x.id!==m.id).length||q.practice?'Next position':'Finish'; }
+  $('quizBody').innerHTML=verdict+`<p class="qmeta">${meta}</p><div class="btnrow">`+
     (q.kind==='move'?`<button class="btn" id="quizShowBest" type="button">Highlight best</button>${q.mine?'<button class="btn" id="quizShowMine" type="button">Highlight mine</button>':''}`:'')+
-    `<button class="btn primary" id="quizNext" type="button">${P.due.filter(x=>x.id!==m.id).length||q.practice?'Next position':'Finish'}</button><button class="btn" id="quizStop" type="button">Stop</button></div>`;
+    `<button class="btn primary" id="quizNext" type="button">${nextLabel}</button><button class="btn" id="quizStop" type="button">Stop</button></div>`;
   $('quizStats').textContent=quizStatsText();
   if($('quizShowBest')) $('quizShowBest').addEventListener('click',()=>{state.suggest=q.bestSteps;render();});
   if($('quizShowMine')) $('quizShowMine').addEventListener('click',()=>{state.suggest=q.mine;render();});
   $('quizStop').addEventListener('click',()=>stopQuiz());
-  $('quizNext').addEventListener('click',()=>{ const more=quizPool().due.filter(x=>x.id!==m.id).length; if(more) startQuiz(); else if(q.practice) startQuiz(null,true); else stopQuiz(); });
+  $('quizNext').addEventListener('click',()=>{ if(state.lesson){ lessonNext(); return; }
+    const more=quizPool().due.filter(x=>x.id!==m.id).length; if(more) startQuiz(); else if(q.practice) startQuiz(null,true); else stopQuiz(); });
   render(); renderMistakeList(); }
 function stopQuiz(silent){ const q=state.quiz; q.active=false; q.answered=false; state.suggest=null;
   if(silent) return;
+  if(state.lesson){ state.lesson=null; renderLessonList(); return; }
   $('reviewCard').hidden=false; renderQuizIdle(); renderMistakeList();
   if(mistakes.length){ const idx=mistakes.findIndex(x=>x.id===q.lastId); selectMistake(idx>=0?idx:mistakes.length-1); } }
+
+/* ---- lessons: short guided lessons, practised through the quiz ---- */
+// Practice positions are generated by tools/find-lesson-positions.js + build-lessons.js and
+// only kept when wildbg agrees with the coach's answer. Always shown with the learner as White.
+const LESSON_POS=/* LESSON_POS:begin */{"opening":[{"b":{"p":[-2,0,0,0,0,5,0,3,0,0,0,-5,5,0,0,0,-3,0,-5,0,0,0,0,2],"bar":[0,0],"off":[0,0]},"d":[3,1],"a":"0,-2,0,0,0,2,4,0,2,0,0,0,-5,5,0,0,0,-3,0,-5,0,0,0,0,2|0,0|0,0"},{"b":{"p":[-2,0,0,0,0,5,0,3,0,0,0,-5,5,0,0,0,-3,0,-5,0,0,0,0,2],"bar":[0,0],"off":[0,0]},"d":[4,2],"a":"0,-2,0,0,2,0,4,0,2,0,0,0,-5,5,0,0,0,-3,0,-5,0,0,0,0,2|0,0|0,0"},{"b":{"p":[-2,0,0,0,0,5,0,3,0,0,0,-5,5,0,0,0,-3,0,-5,0,0,0,0,2],"bar":[0,0],"off":[0,0]},"d":[6,1],"a":"0,-2,0,0,0,0,5,2,2,0,0,0,-5,4,0,0,0,-3,0,-5,0,0,0,0,2|0,0|0,0"},{"b":{"p":[-2,0,0,0,0,5,0,3,0,0,0,-5,5,0,0,0,-3,0,-5,0,0,0,0,2],"bar":[0,0],"off":[0,0]},"d":[5,3],"a":"0,-2,0,2,0,0,4,0,2,0,0,0,-5,5,0,0,0,-3,0,-5,0,0,0,0,2|0,0|0,0"},{"b":{"p":[-2,0,0,0,0,5,0,3,0,0,0,-5,5,0,0,0,-3,0,-5,0,0,0,0,2],"bar":[0,0],"off":[0,0]},"d":[6,5],"a":"0,-2,0,0,0,0,5,0,3,0,0,0,-5,6,0,0,0,-3,0,-5,0,0,0,0,1|0,0|0,0"},{"b":{"p":[-2,0,0,0,0,5,0,3,0,0,0,-5,5,0,0,0,-3,0,-5,0,0,0,0,2],"bar":[0,0],"off":[0,0]},"d":[4,1],"a":"0,-2,0,0,0,0,5,0,3,1,0,0,-5,4,0,0,0,-3,0,-5,0,0,0,1,1|0,0|0,0"}],"primes":[{"b":{"p":[1,1,2,4,0,-2,0,0,0,0,-2,2,0,0,0,-1,0,-2,-2,3,-2,-2,-2,2],"bar":[0,0],"off":[0,0]},"d":[2,3],"a":"0,2,2,2,2,0,-2,0,0,0,0,-2,2,0,0,0,-1,0,-2,-2,3,-2,-2,-2,2|0,0|0,0"},{"b":{"p":[2,2,3,2,0,2,1,0,0,1,0,0,0,0,0,0,0,-2,-2,1,-4,-2,-3,1],"bar":[0,2],"off":[0,0]},"d":[5,2],"a":"0,2,2,3,2,2,2,0,0,0,0,0,0,0,0,0,0,0,-2,-2,1,-4,-2,-3,1|0,2|0,0"},{"b":{"p":[0,2,3,3,1,2,-1,0,0,0,0,0,0,0,1,1,0,0,-2,-5,-5,0,-2,2],"bar":[0,0],"off":[0,0]},"d":[5,5],"a":"0,0,2,3,3,2,3,-1,0,0,0,0,0,0,0,0,0,0,0,-2,-5,-5,0,-2,2|0,0|0,0"},{"b":{"p":[1,2,3,3,2,1,0,0,0,0,0,-1,0,0,0,0,0,0,-1,-3,-5,-2,-3,2],"bar":[1,0],"off":[0,0]},"d":[6,3],"a":"0,2,2,3,2,2,1,0,0,0,0,0,-1,0,0,0,0,0,0,1,-3,-5,-2,-3,2|0,1|0,0"},{"b":{"p":[3,0,-1,0,0,3,2,3,1,0,1,-2,0,0,0,0,-2,-2,-5,0,0,0,-2,2],"bar":[0,1],"off":[0,0]},"d":[2,4],"a":"0,3,0,-1,0,0,3,2,3,2,0,0,-2,0,0,0,0,-2,-2,-5,1,0,0,-2,1|0,1|0,0"}],"bearoff":[{"b":{"p":[2,2,2,2,5,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,-3,-5,-2,-3,0],"bar":[0,1],"off":[2,0]},"d":[6,1],"a":"0,2,2,2,3,3,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,-3,-5,-2,-3,0|0,1|3,0"},{"b":{"p":[6,2,2,2,3,0,0,0,0,0,0,0,0,0,0,0,0,0,-2,-4,-2,-2,-3,-1],"bar":[0,1],"off":[0,0]},"d":[2,4],"a":"0,6,3,2,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,-2,-4,-2,-2,-3,-1|0,1|1,0"},{"b":{"p":[-2,4,4,0,3,0,-1,0,0,0,-1,-2,0,-1,0,0,0,-1,-3,-3,0,0,-1,0],"bar":[0,0],"off":[4,0]},"d":[1,2],"a":"0,-2,4,3,0,3,0,-1,0,0,0,-1,-2,0,-1,0,0,0,-1,-3,-3,0,0,-1,0|0,0|5,0"},{"b":{"p":[2,-1,2,5,2,1,0,0,-1,0,0,0,0,-1,0,0,0,0,-1,-2,-3,-2,-2,-2],"bar":[0,0],"off":[3,0]},"d":[1,1],"a":"0,2,2,0,6,2,0,0,0,-1,0,0,0,0,-1,0,0,0,0,-1,-2,-3,-2,-2,-2|0,1|3,0"},{"b":{"p":[1,-1,3,5,2,0,0,0,-1,0,0,0,0,0,0,0,0,0,-2,-2,-3,-2,-2,-2],"bar":[0,0],"off":[4,0]},"d":[6,2],"a":"0,1,-1,4,5,0,0,0,0,-1,0,0,0,0,0,0,0,0,0,-2,-2,-3,-2,-2,-2|0,0|5,0"}],"doubling":[{"b":{"p":[-3,-1,3,0,0,5,0,2,0,0,0,-4,3,0,0,0,-2,-1,-4,0,1,0,0,0],"bar":[1,0],"off":[0,0]},"a":"double"},{"b":{"p":[0,4,4,3,-2,2,0,0,0,0,2,-2,0,0,0,0,0,-1,-2,-2,-4,0,0,-2],"bar":[0,0],"off":[0,0]},"a":"double"},{"b":{"p":[1,4,2,2,0,2,0,0,-6,2,0,0,2,0,0,0,0,0,-2,0,-2,-1,-2,-2],"bar":[0,0],"off":[0,0]},"a":"double"},{"b":{"p":[0,0,-1,0,-2,5,2,2,0,-1,0,-4,4,0,0,0,-2,0,-5,0,1,0,0,1],"bar":[0,0],"off":[0,0]},"a":"nodouble"},{"b":{"p":[-3,-1,2,2,0,3,2,2,0,0,0,-2,2,-1,0,0,0,-1,-2,1,-3,1,-2,0],"bar":[0,0],"off":[0,0]},"a":"nodouble"}],"taking":[{"b":{"p":[0,0,0,-1,0,4,1,2,0,0,0,-3,4,0,0,0,-2,0,-5,0,0,-3,1,3],"bar":[0,1],"off":[0,0]},"a":"take"},{"b":{"p":[0,0,0,0,1,5,-2,3,1,0,0,-5,3,0,0,0,-1,0,-5,0,0,0,-2,1],"bar":[1,0],"off":[0,0]},"a":"take"},{"b":{"p":[0,2,3,3,1,2,0,0,0,0,0,0,0,0,1,1,0,0,-2,-5,-5,0,-2,2],"bar":[0,1],"off":[0,0]},"a":"take"},{"b":{"p":[2,2,1,2,0,2,0,0,0,0,0,-2,0,0,-2,2,0,0,-3,4,-2,-3,-3,0],"bar":[0,0],"off":[0,0]},"a":"pass"},{"b":{"p":[2,2,1,2,0,2,0,0,0,0,0,-2,0,0,-2,6,0,0,-2,0,-2,-2,-4,-1],"bar":[0,0],"off":[0,0]},"a":"pass"}]}/* LESSON_POS:end */;
+const LKEY='wwbg-lessons-v1';
+let lessonProg=(()=>{ try{ const v=JSON.parse(localStorage.getItem(LKEY)||'{}'); return v&&typeof v==='object'?v:{}; }catch(e){ return {}; } })();
+function saveLessons(){ try{ localStorage.setItem(LKEY,JSON.stringify(lessonProg)); }catch(e){} }
+const lessonBoard=c=>({points:[0,...c.p],bar:{w:c.bar[0],b:c.bar[1]},off:{w:c.off[0],b:c.off[1]}});
+const shotsOn=b=>shotRolls(b,'w');
+const OPEN_TIPS={'3-1':'8/5 6/5 makes your 5-point, the most valuable point early on: it blocks the back checkers and gives your own checkers a safe landing spot.',
+  '4-2':'8/4 6/4 makes your 4-point, the next best thing to the 5-point.',
+  '6-1':'13/7 8/7 makes your bar point (the 7), the first brick of a wall in front of the back checkers.',
+  '5-3':'8/3 6/3 makes your 3-point. It is deep, but a made point beats leaving two blots.',
+  '6-5':'24/13 runs a back checker all the way to safety ("lover\'s leap"). No other 6-5 comes close.',
+  '4-1':'13/9 brings a builder into play and 24/23 splits the back checkers. Both prepare better points next turn, and neither blot is easy to punish.'};
+const LESSONS=[
+  { id:'opening', title:'Opening moves', blurb:'The best way to play your first roll.',
+    intro:['Four opening rolls make a new point, and you should take it: <b>3-1</b> makes the 5-point, <b>4-2</b> the 4-point, <b>6-1</b> the bar point and <b>5-3</b> the 3-point.',
+      '<b>6-5</b> runs a back checker all the way to safety. With the other rolls, bring a builder down from the midpoint (13/9, 13/11, 13/8) and often split the back checkers (24/23, 24/22) to prepare better points next turn.',
+      'Doubles never come up on the very first roll (each player throws one die to start), so they are not in this lesson.'],
+    tip:(it)=>OPEN_TIPS[it.dice.join('-')]||'' },
+  { id:'primes', title:'Building primes', blurb:'Walls of points that trap the back checkers.',
+    intro:['A <b>prime</b> is a wall of made points in a row. Six in a row is a full prime: a checker stuck behind it cannot escape at all. Even four or five in a row makes escaping very hard.',
+      'Build it in front of your opponent\'s back checkers, usually from your 8-point down to your 4-point, and extend it one point at a time. Spare checkers just above the wall are your builders for the next point.',
+      'When a roll lets you add a point to your prime, that is usually the play, even if it leaves a blot somewhere less important.'],
+    tip:(it)=>{ const n=longestPrime(replay(it.board,'w',it.bestSteps),'w'), n0=longestPrime(it.board,'w');
+      return `The best play turns a ${n0}-point wall into a ${n}-point prime${n>=6?', a full prime: nothing behind it can escape':''}.`; } },
+  { id:'bearoff', title:'Bearing off safely', blurb:'Getting home without being hit.',
+    intro:['When your opponent still has a checker on the bar or holds a point in your home board, bearing in and off is a race against getting hit. One hit now can turn a won game into a loss.',
+      'Clear your points from the back (the highest point first), keep an even number of checkers on the points you still hold, and avoid gaps that leave awkward numbers for later rolls.',
+      'Safety comes first: taking a checker off is worth less than leaving no shot. Count the shots each play leaves and pick the one with the fewest.'],
+    tip:(it)=>{ const b=replay(it.board,'w',it.bestSteps), s=shotsOn(b), worst=Math.max(...it.cands.map(shotsOn));
+      return `The best play ${s?`leaves ${s} shot${s>1?'s':''} out of 36`:'leaves no shot at all'}; the riskiest play here would leave ${worst} out of 36.`; } },
+  { id:'doubling', title:'When to double', blurb:'Money play: when to offer the cube.', cube:'doubler',
+    rule:'double once you are past the doubling point (around 68–70% with few gammons, earlier when you win more gammons) while your opponent can still take; if they would pass, double anyway; and when you win lots of gammons, check whether you are too good.',
+    intro:['Doubling offers your opponent a choice: play on for twice the stake, or pass and lose one point now. Double when you are a solid favourite but your opponent can still take: in money play that starts around <b>68–70%</b> winning chances when gammons are rare.',
+      'Double too early and you give away the cube for little. Wait too long and your opponent will simply pass: you have "lost your market". If your opponent would clearly pass, double anyway and cash the point.',
+      'The exception: when you win a lot of gammons you can be <b>too good to double</b>. Playing on for a gammon is worth more than the single point you would cash.'],
+    tip:(it)=>{ const a=it.an; return `You win about ${pct(a.p)} (gammons ${pct(a.gw)}).`+
+      (a.shouldDouble?(a.takes?` That is past the doubling point (about ${pct(a.doublePoint)} here) and your opponent can still take: a good double.`:' Your opponent should pass: double and cash the game.')
+        :a.tooGood?' You win enough gammons that playing on is worth more than cashing the game: too good to double.':` Not yet: doubling starts around ${pct(a.doublePoint)} here.`); } },
+  { id:'taking', title:'When to take', blurb:'Money play: accept or refuse a double.', cube:'taker',
+    rule:'take when your winning chances are above the take point: about 21–25% when gammons are rare, more when you might lose a gammon.',
+    intro:['Take and you play on for twice the stake; pass and you lose one point now. Ignoring gammons, taking is right if you win at least <b>25%</b> of the time: losing 2 points three times and winning 2 once costs the same as passing four times.',
+      'Owning the cube helps you, because you can redouble if the game turns around, so the real take point is a little lower, about <b>21–22%</b>. Gammons push the other way: if you might lose a gammon, you need more.',
+      'Most beginners pass too often. When you are close and not at much risk of a gammon, taking is usually the smaller error.'],
+    tip:(it)=>{ const a=it.an; return `You win about ${pct(1-a.p)} with a gammon risk of ${pct(a.gw)}. Here you can take down to about ${a.passPoint?pct(1-a.passPoint):'21%'}, so this is a ${a.takes?'take':'pass'}.`; } },
+];
+// Turn a lesson's positions into quiz items (the same shape as logged mistakes).
+function lessonItems(L){
+  return (LESSON_POS[L.id]||[]).map((c,i)=>{ const board=lessonBoard(c.b), id=`lesson-${L.id}-${i}`;
+    if(!L.cube){ const a=analyze(board,'w',c.d), it={id,type:'move',by:'w',mode:'vsai',board,dice:c.d.slice(),bestSteps:a.moves[0].steps,
+        bestExplanation:a.moves[0].explanation,cands:a.moves.map(m=>m.board)};
+      it.tip=L.tip(it); return it; }
+    const doubler=L.cube==='doubler'?'w':'b', an=cubeAnalysis(probsOnRoll(board,doubler),'center');
+    const best=L.cube==='doubler'?(an.shouldDouble?'double':'nodouble'):(an.takes?'take':'pass');
+    const it={id,type:'cube',by:'w',mode:'vsai',role:L.cube,board,cube:{value:1,owner:null},best,an,
+      bestLabel:best==='nodouble'&&an.tooGood?'No double (too good)':ACTION[best]};
+    it.text=L.tip(it); it.tip=L.rule; return it; }); }
+function lessonStatus(L){ const g=lessonProg[L.id], n=(LESSON_POS[L.id]||[]).length;
+  return g&&g.done?{done:true,txt:`done · best ${g.best}/${n} right`}:{done:false,txt:`${n} positions`}; }
+function updateLessonsTag(){ const done=LESSONS.filter(L=>lessonStatus(L).done).length;
+  $('lessonsTag').textContent=done?`${done} of ${LESSONS.length} completed`:`${LESSONS.length} lessons`; }
+function openLessons(){ stopQuiz(true); state.lesson=null; state.screen='learn'; showScreens();
+  $('reviewCard').hidden=true; $('mlistCard').hidden=true; $('lessonCard').hidden=false;
+  state.board=startingBoard(); state.turn='w'; state.phase='review'; state.suggest=null; state.rolled=null; state.cube={value:1,owner:null};
+  renderLessonList(); render(); }
+function renderLessonList(){ $('quizCard').hidden=true; $('lessonCard').hidden=false;
+  $('lessonBody').innerHTML='<h2>Lessons</h2><p class="qmeta">Read a short explanation, then practise on real positions. Your answers here don\'t go into your mistakes log.</p><div class="lessonlist">'+
+    LESSONS.map(L=>{ const st=lessonStatus(L); return `<button class="lessonrow" type="button" data-lesson="${L.id}"><div class="lt">${L.title}</div><div class="ls">${L.blurb}</div><div class="lst ${st.done?'done':''}">${st.txt}</div></button>`; }).join('')+'</div>';
+  $('lessonBody').querySelectorAll('[data-lesson]').forEach(b=>b.addEventListener('click',()=>openLesson(b.dataset.lesson))); updateLessonsTag(); }
+function openLesson(id){ const L=LESSONS.find(x=>x.id===id); if(!L) return; state.lesson=null; $('quizCard').hidden=true;
+  $('lessonBody').innerHTML=`<h2>${L.title}</h2><div class="lessonintro">${L.intro.map(t=>`<p>${t}</p>`).join('')}</div>`+
+    `<div class="btnrow"><button class="btn primary" id="lessonGo" type="button">Practise (${(LESSON_POS[id]||[]).length} positions)</button><button class="btn" id="lessonBack" type="button">All lessons</button></div>`;
+  $('lessonGo').addEventListener('click',()=>startLesson(id)); $('lessonBack').addEventListener('click',renderLessonList); }
+function renderLessonHead(){ const S=state.lesson; if(!S) return;
+  $('lessonBody').innerHTML=`<div class="qhead"><h2 style="margin:0;">${S.L.title}</h2><span class="qstats">position ${S.idx+1} of ${S.items.length} · ${S.right} right</span></div>`; }
+function startLesson(id){ const L=LESSONS.find(x=>x.id===id); if(!L) return;
+  state.lesson={L,items:lessonItems(L),idx:0,right:0}; $('quizCard').hidden=false; renderLessonHead(); startQuiz(); }
+function lessonNext(){ const S=state.lesson; if(!S) return;
+  if(S.idx<S.items.length-1){ S.idx++; renderLessonHead(); startQuiz(); return; }
+  const prev=lessonProg[S.L.id]; lessonProg[S.L.id]={done:true,best:Math.max(S.right,prev&&prev.best||0),last:S.right,ts:Date.now()}; saveLessons(); updateLessonsTag();
+  const k=LESSONS.indexOf(S.L), nextL=LESSONS[k+1], n=S.items.length, r=S.right;
+  state.quiz.active=false; $('quizCard').hidden=true; state.suggest=null;
+  $('lessonBody').innerHTML=`<h2>${S.L.title}: done</h2><p class="qprompt">You got <b>${r} of ${n}</b> right${r===n?' — perfect.':r>=n-1?' — nearly there.':'. Read the tips again and have another go.'}</p>`+
+    `<div class="btnrow"><button class="btn" id="lessonAgain" type="button">Try again</button>${nextL?`<button class="btn primary" id="lessonNextL" type="button">Next: ${nextL.title}</button>`:''}<button class="btn" id="lessonBack" type="button">All lessons</button></div>`;
+  const id=S.L.id; state.lesson=null;
+  $('lessonAgain').addEventListener('click',()=>startLesson(id)); if(nextL) $('lessonNextL').addEventListener('click',()=>openLesson(nextL.id));
+  $('lessonBack').addEventListener('click',renderLessonList); render(); }
 
 /* ---- progress screen ---- */
 function openProgress(){ state.screen='progress'; showScreens(); renderProgress(); }
@@ -2460,7 +2581,8 @@ function refreshNames(){
 }
 function goMenu(){state.busy=false;if(state.rv){state.rv=null;state.rvSnap=null;}stopQuiz(true);state.gameId++;state.cubeResolve=null;$('cubeOverlay').classList.remove('show');state.screen='menu';updateMenuCounts();showScreens();}
 function startMatch(mode){state.mode=mode;state.screen='match';state.tally={w:0,b:0};resetMatch();$('coachChk').checked=true;state.coach=true;showScreens();newGame(mode);}
-function openLearn(){state.quiz.active=false;state.screen='learn';$('reviewCard').hidden=false;state.reviewIdx=(mistakes.length?mistakes.length-1:null);
+function openLearn(){state.quiz.active=false;state.lesson=null;state.screen='learn';$('reviewCard').hidden=false;
+  $('lessonCard').hidden=true;$('mlistCard').hidden=false;$('quizCard').hidden=false;state.reviewIdx=(mistakes.length?mistakes.length-1:null);
   showScreens();renderMistakeList();renderQuizIdle();
   if(mistakes.length)selectMistake(mistakes.length-1);
   else{state.board=startingBoard();state.turn='w';state.phase='review';state.suggest=null;state.rolled=null;render();
@@ -2529,6 +2651,7 @@ document.addEventListener('pointercancel',e=>endDrag(e,true));
 /* play settings */
 $('levelSel').value=botLevel();
 $('levelSel').addEventListener('change',e=>{ state.prefs.level=BOT_LEVELS[e.target.value]?e.target.value:'medium'; savePrefs(); refreshNames(); });
+refreshNames();
 $('speedSel').value=state.prefs.speed; $('soundChk').checked=!!state.prefs.sound; $('autoChk').checked=!!state.prefs.autoForced;
 $('speedSel').addEventListener('change',e=>{ state.prefs.speed=e.target.value; savePrefs(); render(); });
 $('soundChk').addEventListener('change',e=>{ state.prefs.sound=e.target.checked; savePrefs(); if(e.target.checked) sound('click'); });
@@ -2553,6 +2676,8 @@ $('coachChk').addEventListener('change',e=>{state.coach=e.target.checked;if(!sta
 $('playChoice').addEventListener('click',()=>startMatch('vsai'));
 $('hotseatChoice').addEventListener('click',()=>startMatch('hotseat'));
 $('learnChoice').addEventListener('click',openLearn);
+$('lessonsChoice').addEventListener('click',openLessons);
+updateLessonsTag();
 $('progressChoice').addEventListener('click',openProgress);
 $('pPlayer').addEventListener('change',e=>{ state.pPlayer=e.target.value; renderProgress(); });
 $('pRange').addEventListener('change',()=>renderProgress());
