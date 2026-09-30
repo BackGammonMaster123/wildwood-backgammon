@@ -19,6 +19,8 @@ async function playOne(sloppy){ let t0=Date.now();
     if(ph==='moving'&&human){ E(`(function(){const a=analyze(state.turnStart,state.turn,state.rolled); if(!a.moves.length) return;
       const pick=Math.random()<${sloppy}?a.moves[Math.floor(Math.random()*a.moves.length)]:a.moves[0]; playSteps(pick.steps.slice(state.played.length));})()`); } }
   return false; }
+// The review analyses every turn in chunks; wait until it is done (not a fixed delay).
+async function reviewReady(){ const t0=Date.now(); while(Date.now()-t0<30000){ await wait(50); if(E('!!(state.rv&&state.rv.rows)')) return; } }
 function integrity(){ return E(`(function(){ const r=state.lastRec; let b=startingBoard(), bad=0;
   for(const t of r.turns){ if(boardKey(t.board)!==boardKey(b)) bad++; if(t.t==='move') b=replay(b,t.p,t.steps); }
   if(boardKey(r.final)!==boardKey(b)) bad++; return {n:r.turns.length,bad,cube:r.turns.filter(t=>t.t==='cube').length,dance:r.turns.filter(t=>t.t==='move'&&!t.steps.length).length}; })()`); }
@@ -27,12 +29,12 @@ function integrity(){ return E(`(function(){ const r=state.lastRec; let b=starti
   click('playChoice'); await wait(100);
   ok(await playOne(0.5),'game finished through the UI');
   const I=integrity(); console.log('     turns',I.n,'cube actions',I.cube,'dances',I.dance,'mismatches',I.bad);
-  ok(I.n>5 && I.bad===0,'recorded turns replay exactly to the final position');
+  ok(I.n>=2 && I.bad===0,'recorded turns replay exactly to the final position');  // a sloppy early double can end it fast
   ok(!D.getElementById('bannerReview').hidden,'game-over screen offers "Review game"');
   ok(E('gameRecs.length')===1 && E('hist.games[hist.games.length-1].recId')===E('state.lastRec.id'),'game stored and linked to progress history');
 
   console.log('B. Open the review');
-  click('bannerReview'); await wait(1500);
+  click('bannerReview'); await reviewReady();
   ok(E("state.screen")==='review' && !D.getElementById('reviewPanel').hidden && !D.getElementById('rvGraphCard').hidden,'review screen + graph shown');
   ok(/win|wins/.test(txt('rvSummary')) && /checker error/.test(txt('rvSummary')) && /luck/.test(txt('rvSummary')),'summary: result, checker error, luck');
   const N=E('state.rv.rows.length'); ok(txt('rvPos')===`1 / ${N}` && D.querySelectorAll('#rvList .rvrow').length===N,`position 1 / ${N}, list has every row`);
@@ -67,7 +69,7 @@ function integrity(){ return E(`(function(){ const r=state.lastRec; let b=starti
   ok(integrity().bad===0,'hotseat record replays exactly');
   E('goMenu()'); click('progressChoice'); await wait(50);
   D.getElementById('pPlayer').value='Bob'; D.getElementById('pPlayer').dispatchEvent(new win.Event('change'));
-  const rb=D.querySelector('#pTable [data-rev]'); ok(!!rb,'progress table row has a Review button'); rb.click(); await wait(1500);
+  const rb=D.querySelector('#pTable [data-rev]'); ok(!!rb,'progress table row has a Review button'); rb.click(); await reviewReady();
   ok(E('state.screen')==='review' && /Alice/.test(txt('rvSummary')) && /Bob/.test(txt('rvSummary')),'review names both players');
   ok(/Alice's winning chances/.test(txt('rvGraphTitle')),'graph titled for White (Alice)');
   const cubeRows=E("state.rv.rows.filter(r=>r.t.t==='cube').length"); console.log('     cube rows:',cubeRows);

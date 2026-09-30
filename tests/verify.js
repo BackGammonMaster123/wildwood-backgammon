@@ -17,13 +17,15 @@ setTimeout(()=>{
   E("state.phase='moving';finishHumanTurn();");
   console.log('after finish -> mistakes:', E('mistakes.length'), '| loggedCount:', D.getElementById('loggedCount').textContent);
   console.log('verdict:', D.getElementById('verdictWrap').textContent.slice(0,80));
-  D.getElementById('sensSel').value='0.30'; D.getElementById('sensSel').dispatchEvent(new win.Event('change'));
+  D.getElementById('sensSel').value='0.2'; D.getElementById('sensSel').dispatchEvent(new win.Event('change'));
   E(`state.turnStart=cloneBoard(startingBoard());state.rolled=[6,1];
      const a=analyze(state.turnStart,'w',[6,1]);let pick=a.moves[0],bestGap=1e9;
-     for(const m of a.moves){const l=a.moves[0].equity-m.equity; if(l>=0.15&&l<0.30&&Math.abs(l-0.20)<bestGap){bestGap=Math.abs(l-0.20);pick=m;}}
+     for(const m of a.moves){const l=a.moves[0].equity-m.equity; if(l>=0.08&&l<0.20&&Math.abs(l-0.12)<bestGap){bestGap=Math.abs(l-0.12);pick=m;}}
      state.board=pick.board;state.played=pick.steps;window.__loss2=a.moves[0].equity-pick.equity;`);
   const before=E('mistakes.length'); E("state.phase='moving';finishHumanTurn();");
-  console.log('threshold 0.30, loss',E('window.__loss2').toFixed(3),'-> logged?', E('mistakes.length')>before ? 'YES (should be no)':'no (correct)');
+  const wrong=E('mistakes.length')>before||E('state.threshold')!==0.2;
+  console.log('threshold 0.20, loss',E('window.__loss2').toFixed(3),'-> logged?', wrong ? 'YES (should be no)':'no (correct)');
+  if(wrong) process.exit(1);
   console.log('final localStorage bytes:', E(`(localStorage.getItem('wwbg-mistakes-v1')||'').length`));
   process.exit(0);
 },400);

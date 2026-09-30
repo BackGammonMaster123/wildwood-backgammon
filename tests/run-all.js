@@ -2,8 +2,8 @@
 // --no-browser skips the Playwright suite (needs Chromium: `npx playwright install chromium`).
 const { spawnSync } = require('child_process');
 const noBrowser = process.argv.includes('--no-browser');
-const suites = ['test', 'cube-test', 'match-test', 'review-test', 'adapter-test',
-  'cube-flow', 'match-flow', 'quiz-test', 'progress-test', 'review-flow',
+const suites = ['test', 'net-test', 'level-test', 'cube-test', 'match-test', 'review-test', 'adapter-test',
+  'cube-flow', 'match-flow', 'quiz-test', 'lesson-test', 'progress-test', 'review-flow',
   'verify', 'verify2', 'freeze3', 'match-smoke'];
 if (!noBrowser) suites.push('feel-test');
 let bad = 0;
