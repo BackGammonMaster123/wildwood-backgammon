@@ -127,6 +127,9 @@ free to run. An LLM "explain this move" layer may be added later.
   under reduced motion.
 - Last-move markers: a halo on checkers that arrived and a dashed ghost where one left.
 - Drag and drop uses pointer events.
+- Tapping your home tray (`bearOffPlan`) plays the rest of the roll, bearing off as many checkers as
+  it can. If there are several ways to do that, a game uses the coach's choice, and a quiz or lesson
+  makes you pick.
 
 **Board themes**
 - Themes are pure CSS variables on `[data-board="…"]`: classic, leather, club, marble, midnight.
