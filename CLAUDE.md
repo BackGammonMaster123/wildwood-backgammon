@@ -16,6 +16,7 @@ free to run. An LLM "explain this move" layer may be added later.
 | `.github/workflows/` | `test.yml` (CI) and `pages.yml` (deploys to GitHub Pages on push to `main`). |
 | `tests/` | jsdom and Playwright suites, plus `run-all.js`. Fixtures are in `tests/fixtures/`. |
 | `tools/` | One-off scripts: evaluation-net pipeline (`net-gen.js`, `net-features.js`, `train-net.py`, `pack-net.js`, `net-bench.js`, `make-net-fixture.js`), race calibration, cube-position finder, theme screenshots. They write scratch files to `/tmp`. |
+| `firebase/` | `database.rules.json`: the Realtime Database rules (pasted into the Firebase console; keep the two in step). `tools/firebase-smoke.js` checks them against the live project. |
 | `wildbg-kit/` | `label.rs` (scores positions with wildbg to train the evaluation net), the board adapter, and a guide for running wildbg itself in a self-hosted build (WASM). |
 
 ## Workflow rules
@@ -27,8 +28,10 @@ free to run. An LLM "explain this move" layer may be added later.
 3. Run `npm test` before every commit. It needs Chromium for `feel-test`; if that isn't
    available, run `npx playwright install chromium`, or use `npm run test:fast` to skip it.
 4. Keep the page self-contained. External requests are limited to the Google Fonts
-   stylesheet, and the page must still work if that fails. No CDNs, no fetch calls, no WASM
-   in the published page. wildbg is for a self-hosted build only; see `wildbg-kit/`.
+   stylesheet and the project's own Firebase endpoints (Auth REST at identitytoolkit /
+   securetoken.googleapis.com, and its Realtime Database URL), used only by cloud sync.
+   The page must still work if any of them fail. No CDNs, no SDKs, no WASM in the published
+   page. wildbg is for a self-hosted build only; see `wildbg-kit/`.
 5. Must work at phone width (about 400px), in light and dark mode, and with reduced motion.
 6. **Never put an API key or other secret in the repo or in the published page.** That covers
    the planned LLM "explain this move" layer too. Keys go in GitHub's secret settings
@@ -38,7 +41,10 @@ free to run. An LLM "explain this move" layer may be added later.
    feature must call the model through something that keeps the key on the server side (a
    small proxy, or the Claude artifact runtime), or have each player enter their own key at
    runtime (kept in localStorage, never committed). CI fails if an Anthropic key pattern
-   (`sk-ant-…`) appears in tracked files or the built site.
+   (`sk-ant-…`) appears in tracked files or the built site. The Firebase web config
+   (`FIREBASE` in the page) is not a secret: it is public by design, and access is enforced
+   by `firebase/database.rules.json`. Never put a Firebase service-account key or database
+   secret in the repo.
 
 ## Architecture
 
@@ -137,6 +143,22 @@ free to run. An LLM "explain this move" layer may be added later.
   `wwbg-rating-v1` (`rating`: `{r, exp, log}`), `wwbg-lessons-v1` (`lessonProg`).
 - History entries written since the evaluation net carry `v:2` (and `level` for vs-bot games).
   The progress screen only uses `v>=2` entries: older ones measured error on the heuristic's scale.
+
+**Cloud sync** (`cloudInit`, `cloudSync`, `merge3`, the `syncCard` on the menu)
+- Firebase Auth by email link and the Realtime Database, both over REST (no SDK). Only on
+  `CLOUD_HOSTS` (the GitHub Pages site, localhost); hidden in the Claude artifact.
+- Data lives at `/users/<uid>`: collections `m` (mistakes), `g` (game records), `hg`/`hq`
+  (history games/quiz), `l` (lessons), `rl` (rating log), plus `rs` (rating). Every record is
+  stored as a JSON string, because the database drops empty arrays and nulls.
+- `cloudSync` fetches the user's data, three-way merges each collection (this device, the
+  cloud, and hashes of the last synced state in `wwbg-sync-base-v1`), applies the result
+  locally with no await in between, then PATCHes only the changed keys. Conflicts go to the
+  more recently touched record. Ratings merge by adding the other devices' logged changes,
+  so rating log `d` values must stay unrounded.
+- Every save of synced data calls `cloudDirty()` (a debounced sync). `CLOUD` is a `var` so
+  those calls are safe before the sync section has run.
+- Tests: `tests/sync-test.js` (two devices against a fake Firebase). Settings keys:
+  `wwbg-cloud-v1` (session), `wwbg-cloud-email` (pending sign-in).
 
 **Scoring** (progress screen)
 - PR (XG's performance rating) = equity lost per non-forced decision ×500, checker + cube
